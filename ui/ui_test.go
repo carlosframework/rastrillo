@@ -461,3 +461,179 @@ func TestPaginationWithNoItems(t *testing.T) {
 		t.Errorf("no items were supplied, so no links should render: %s", got)
 	}
 }
+
+// allPartials is the shipped set, with a fixture exercising every
+// optional field at once. Every href is deliberately relative: the
+// self-containment check below bans absolute URLs outright, so anything
+// absolute in the output came from a partial rather than a caller.
+func allPartials() []struct {
+	Name string
+	Data map[string]any
+} {
+	return []struct {
+		Name string
+		Data map[string]any
+	}{
+		{"page-header", map[string]any{
+			"Title": "Posts", "Sub": "Everything you have written, newest first.",
+			"ActionHref": "/posts/new", "ActionLabel": "Write a post", "ActionIcon": "plus",
+		}},
+		{"list-bar", map[string]any{
+			"SearchAction": "/posts", "Query": "release", "Placeholder": "Search posts",
+			"Hidden": [][2]string{{"sort", "newest"}},
+		}},
+		{"list-bar-search", map[string]any{
+			"Action": "/posts", "Query": "release", "Placeholder": "Search posts",
+			"Hidden": [][2]string{{"sort", "newest"}}, "Label": "Search posts",
+		}},
+		{"list-search-submit", map[string]any{"Label": "Search posts"}},
+		{"list-row-action", map[string]any{
+			"Href": "/posts/1", "Main": "Release notes, August",
+			"Sub": "Published 2 August · 4 min read",
+			"ActionHref": "/posts/1/edit", "ActionLabel": "Edit",
+			"ActionAria": "Edit Release notes, August",
+			"Lead":       "accent", "LeadInitial": "RN",
+		}},
+		{"status-pill", map[string]any{"Tone": "positive", "Label": "Published"}},
+		{"empty-state", map[string]any{
+			"Title": "Nothing here yet", "Body": "No posts yet. Your first one is a good place to start.",
+			"PostAction": "/posts/seed", "ActionLabel": "Add sample posts",
+			"Hidden":     [][2]string{{"csrf", "tok-123"}},
+		}},
+		{"pagination", map[string]any{
+			"Label": "Pagination",
+			"Items": []any{
+				map[string]any{"Label": "Previous", "Disabled": true},
+				map[string]any{"Label": "1", "Current": true},
+				map[string]any{"Label": "2", "Href": "/posts?page=2"},
+				map[string]any{"Gap": true},
+				map[string]any{"Label": "9", "Href": "/posts?page=9"},
+			},
+		}},
+	}
+}
+
+// fixtureFor looks one fixture up by partial name. Assertions never index
+// allPartials() positionally: reordering that slice would otherwise
+// silently re-point a test at a different partial and still pass.
+func fixtureFor(t *testing.T, name string) map[string]any {
+	t.Helper()
+	for _, p := range allPartials() {
+		if p.Name == name {
+			return p.Data
+		}
+	}
+	t.Fatalf("no fixture defined for partial %q", name)
+	return nil
+}
+
+// All eight partials are present and named exactly as documented.
+func TestAllEightPartialsAreDefined(t *testing.T) {
+	tmpl := parseAll(t)
+	want := []string{
+		"page-header", "list-bar", "list-bar-search", "list-search-submit",
+		"list-row-action", "status-pill", "empty-state", "pagination",
+	}
+	for _, name := range want {
+		if tmpl.Lookup(name) == nil {
+			t.Errorf("partial %q is not defined", name)
+		}
+	}
+	if len(want) != 8 {
+		t.Fatalf("the shipped set is 8 partials, this list has %d", len(want))
+	}
+}
+
+// Rendered output reaches nothing outside the page: no off-origin fetch,
+// no script, no remote asset. Mirrors icons_test.go's
+// TestVendoredIconsAreSelfContained, adapted from one SVG string to one
+// rendered partial's HTML.
+func TestRenderedPartialsAreSelfContained(t *testing.T) {
+	for _, p := range allPartials() {
+		got := render(t, p.Name, p.Data)
+		for _, bad := range []string{
+			"http://", "https://", "//cdn", "<script", "<iframe", "<img",
+			"<link ", "url(", "xlink:href", "@import",
+		} {
+			if strings.Contains(got, bad) {
+				t.Errorf("partial %q reaches outside the page (%q):\n%s", p.Name, bad, got)
+			}
+		}
+	}
+}
+
+// The one non-partial asset this package ships gets the same bar as the
+// partials and the vendored icons.
+func TestTokensCSSIsSelfContained(t *testing.T) {
+	css := string(TokensCSS())
+	for _, bad := range []string{"@import", "url(", "http://", "https://", "//fonts", "src:"} {
+		if strings.Contains(css, bad) {
+			t.Errorf("tokens.css reaches outside the page (%q)", bad)
+		}
+	}
+}
+
+// Every interactive element renders with a real accessible name
+// (spec §10). Checked here rather than per-partial so a new partial
+// cannot quietly opt out.
+func TestEveryControlHasAnAccessibleName(t *testing.T) {
+	search := render(t, "list-bar-search", fixtureFor(t, "list-bar-search"))
+	if !strings.Contains(search, "aria-label=") {
+		t.Errorf("the search input has no accessible name: %s", search)
+	}
+	if !strings.Contains(search, `type="submit">Search posts</button>`) {
+		t.Errorf("the submit control has no text: %s", search)
+	}
+	row := render(t, "list-row-action", fixtureFor(t, "list-row-action"))
+	if !strings.Contains(row, `aria-label="Edit Release notes, August"`) {
+		t.Errorf("the row action pill has no disambiguating name: %s", row)
+	}
+	page := render(t, "pagination", fixtureFor(t, "pagination"))
+	if !strings.Contains(page, `aria-label="Pagination"`) {
+		t.Errorf("the pagination nav has no accessible name: %s", page)
+	}
+}
+
+// The styleguide equivalent: one pass renders every partial together,
+// the combined output is balanced, and each partial left its marker.
+func TestRenderEverythingSmoke(t *testing.T) {
+	tmpl := parseAll(t)
+	var buf strings.Builder
+	buf.WriteString(`<div class="rst-page">`)
+	for _, p := range allPartials() {
+		if err := tmpl.ExecuteTemplate(&buf, p.Name, p.Data); err != nil {
+			t.Fatalf("ExecuteTemplate(%q): %v", p.Name, err)
+		}
+	}
+	buf.WriteString(`</div>`)
+	out := buf.String()
+
+	markers := map[string]string{
+		"page-header":        `<header class="rst-page-header">`,
+		"list-bar":           `<div class="rst-lbar">`,
+		"list-bar-search":    `<form class="rst-search"`,
+		"list-search-submit": `<button class="rst-sr-only" type="submit">`,
+		"list-row-action":    `<div class="rst-row">`,
+		"status-pill":        `<span class="rst-status"`,
+		"empty-state":        `<div class="rst-empty">`,
+		"pagination":         `<nav class="rst-pagination"`,
+	}
+	for name, marker := range markers {
+		if !strings.Contains(out, marker) {
+			t.Errorf("smoke output is missing %s (%q)", name, marker)
+		}
+	}
+
+	for _, tag := range []string{"div", "form", "header", "nav", "a", "p", "h1", "h2", "span", "small", "button", "svg"} {
+		open, closed := countOpenTags(out, tag), strings.Count(out, "</"+tag+">")
+		if open != closed {
+			t.Errorf("<%s> is unbalanced: %d opened, %d closed", tag, open, closed)
+		}
+	}
+}
+
+// countOpenTags counts opening tags for one element name, matching both
+// "<tag " and "<tag>" so <p> is never confused with <path>.
+func countOpenTags(s, tag string) int {
+	return strings.Count(s, "<"+tag+" ") + strings.Count(s, "<"+tag+">")
+}
