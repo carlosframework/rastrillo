@@ -21,6 +21,8 @@ func main() {
 		err = runNew(os.Args[2:])
 	case "generate":
 		err = runGenerate(os.Args[2:])
+	case "dev":
+		err = runDev(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -41,5 +43,6 @@ func usage() {
 Usage:
   rastrillo new <name>       scaffold a new app in ./<name>
   rastrillo generate [dir]   run the filesystem-routing generator (default: .)
+  rastrillo dev [dir] [-- app args]   watch + regenerate + rebuild + restart (default dir: .)
 `)
 }
