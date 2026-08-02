@@ -348,3 +348,116 @@ func TestListBarMinimalFixture(t *testing.T) {
 		t.Errorf("empty attributes rendered instead of being omitted: %s", got)
 	}
 }
+
+func TestListRowActionMinimalFixture(t *testing.T) {
+	got := render(t, "list-row-action", map[string]any{
+		"Href": "/posts/1", "Main": "Release notes, August",
+	})
+	if !strings.Contains(got, `<a href="/posts/1">Release notes, August</a>`) {
+		t.Errorf("missing primary link: %s", got)
+	}
+	if strings.Contains(got, "rst-row__lead") || strings.Contains(got, "rst-row__action") {
+		t.Errorf("optional parts rendered without data: %s", got)
+	}
+	if strings.Contains(got, "rst-row__sub") {
+		t.Errorf("no Sub was supplied, so no meta line should render: %s", got)
+	}
+}
+
+func TestListRowActionFullFixture(t *testing.T) {
+	got := render(t, "list-row-action", map[string]any{
+		"Href": "/posts/1", "Main": "Release notes, August",
+		"Sub":        "Published 2 August · 4 min read",
+		"ActionHref": "/posts/1/edit", "ActionLabel": "Edit",
+		"ActionAria": "Edit Release notes, August",
+		"Lead":       "positive", "LeadInitial": "RN",
+	})
+	for _, want := range []string{
+		`data-lead="positive"`, `aria-hidden="true"`, ">RN<",
+		"Published 2 August · 4 min read",
+		`href="/posts/1/edit"`, `aria-label="Edit Release notes, August"`, ">Edit<",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+// Two separate anchors, never one nested inside the other: nested
+// anchors are invalid HTML and the inner one is unreachable by keyboard.
+func TestListRowActionNeverNestsAnchors(t *testing.T) {
+	got := render(t, "list-row-action", map[string]any{
+		"Href": "/posts/1", "Main": "Release notes",
+		"ActionHref": "/posts/1/edit", "ActionLabel": "Edit",
+	})
+	first := strings.Index(got, "<a ")
+	firstClose := strings.Index(got, "</a>")
+	second := strings.LastIndex(got, "<a ")
+	if first == -1 || firstClose == -1 || second == first {
+		t.Fatalf("expected two anchors: %s", got)
+	}
+	if second < firstClose {
+		t.Errorf("the action anchor opens before the name anchor closes: %s", got)
+	}
+}
+
+func TestPaginationRendersEveryItemKind(t *testing.T) {
+	got := render(t, "pagination", map[string]any{
+		"Items": []any{
+			map[string]any{"Label": "Previous", "Disabled": true},
+			map[string]any{"Label": "1", "Current": true},
+			map[string]any{"Label": "2", "Href": "/posts?page=2"},
+			map[string]any{"Gap": true},
+			map[string]any{"Label": "9", "Href": "/posts?page=9"},
+			map[string]any{"Label": "Next", "Href": "/posts?page=2"},
+		},
+	})
+	for _, want := range []string{
+		`aria-label="Pagination"`,
+		`<span aria-disabled="true">Previous</span>`,
+		`<span aria-current="page">1</span>`,
+		`<a href="/posts?page=2">2</a>`,
+		`aria-hidden="true"`,
+		`<a href="/posts?page=9">9</a>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+	// The gap item carries no Label, and a gap is never a link.
+	if strings.Contains(got, `<a href="">`) {
+		t.Errorf("the gap item rendered as an empty link: %s", got)
+	}
+}
+
+// The current page is marked in the accessibility tree, not only in the
+// stylesheet.
+func TestPaginationCurrentPageIsNotColourAlone(t *testing.T) {
+	got := render(t, "pagination", map[string]any{
+		"Items": []any{map[string]any{"Label": "3", "Current": true}},
+	})
+	if !strings.Contains(got, `aria-current="page"`) {
+		t.Errorf("current page carries no aria-current: %s", got)
+	}
+}
+
+func TestPaginationLabelOverride(t *testing.T) {
+	got := render(t, "pagination", map[string]any{
+		"Label": "Paginación",
+		"Items": []any{map[string]any{"Label": "1", "Current": true}},
+	})
+	if !strings.Contains(got, `aria-label="Paginación"`) {
+		t.Errorf("Label override ignored: %s", got)
+	}
+}
+
+// An empty page strip must render an empty nav, not an Execute error.
+func TestPaginationWithNoItems(t *testing.T) {
+	got := render(t, "pagination", map[string]any{})
+	if !strings.Contains(got, `<nav class="rst-pagination"`) {
+		t.Errorf("missing nav: %s", got)
+	}
+	if strings.Contains(got, "<a ") {
+		t.Errorf("no items were supplied, so no links should render: %s", got)
+	}
+}
