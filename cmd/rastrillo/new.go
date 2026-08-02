@@ -53,7 +53,11 @@ func runNew(args []string) error {
 	if err := runGenerate([]string{name}); err != nil {
 		return fmt.Errorf("initial generate: %w", err)
 	}
-	fmt.Printf("\ncd %s && go build ./...\n", name)
+	// go build ./... discards its output whenever it matches more than one
+	// package (actions, gen, gen/actions/..., cmd/<name> — see `go help
+	// build`), even though cmd/<name> is the only `main` among them. Build
+	// that package by its own import path so the binary actually lands here.
+	fmt.Printf("\ncd %s && go build ./cmd/%[1]s\n", name)
 	return nil
 }
 
