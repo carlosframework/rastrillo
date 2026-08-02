@@ -20,7 +20,7 @@
   {{- if .Items}}{{range .Items}}
   {{- if .Gap}}<span class="rst-pagination__gap" aria-hidden="true">…</span>
   {{- else if .Current}}<span aria-current="page">{{.Label}}</span>
-  {{- else if .Disabled}}<span aria-disabled="true">{{.Label}}</span>
+  {{- else if .Disabled}}<span>{{.Label}}</span>
   {{- else}}<a href="{{.Href}}">{{.Label}}</a>
   {{- end}}
   {{- end}}{{end}}

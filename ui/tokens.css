@@ -6,8 +6,10 @@
    want. Nothing regenerates it, and rastrillo.Serve never serves it —
    your app's own static handler does.
 
-   Everything is prefixed rst- so this file cannot collide with CSS you
-   already have. There are no imports, no remote assets and no webfont:
+   Every class and custom property is prefixed rst- — except the single
+   .icon rule, which styles the class rastrillo.Icon emits — so dropping
+   this file into an app with existing CSS has exactly one known
+   collision surface. There are no imports, no remote assets and no webfont:
    this stylesheet fetches nothing, from anywhere, ever. That is a test,
    not a wish (ui_test.go, TestTokensCSSIsSelfContained) — which is also
    why this comment cannot spell those constructs out literally.

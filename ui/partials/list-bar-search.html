@@ -34,7 +34,7 @@
                     page size)
        Label        string, optional — passed through to
                     list-search-submit as its screen-reader text */}}
-{{define "list-bar-search"}}<form class="rst-search" role="search" method="get" action="{{.Action}}">
+{{define "list-bar-search"}}<form class="rst-search" role="search" method="get"{{if .Action}} action="{{.Action}}"{{end}}>
   {{icon "search"}}
   <input type="search" name="q"{{if .Query}} value="{{.Query}}"{{end}}{{if .Placeholder}} placeholder="{{.Placeholder}}"{{end}} aria-label="{{if .Placeholder}}{{.Placeholder}}{{else}}Search{{end}}">
   {{- if .Hidden}}{{range .Hidden}}

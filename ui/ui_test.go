@@ -253,6 +253,10 @@ func TestListBarSearchMinimalFixture(t *testing.T) {
 	if strings.Contains(got, `value=""`) || strings.Contains(got, `placeholder=""`) {
 		t.Errorf("empty attributes rendered instead of being omitted: %s", got)
 	}
+	// Action is set in this fixture, so it should never render empty either.
+	if strings.Contains(got, ` action=""`) {
+		t.Errorf("empty action attribute rendered instead of being omitted: %s", got)
+	}
 }
 
 // The input always has a real accessible name, whether or not the caller
@@ -414,7 +418,7 @@ func TestPaginationRendersEveryItemKind(t *testing.T) {
 	})
 	for _, want := range []string{
 		`aria-label="Pagination"`,
-		`<span aria-disabled="true">Previous</span>`,
+		`<span>Previous</span>`,
 		`<span aria-current="page">1</span>`,
 		`<a href="/posts?page=2">2</a>`,
 		`aria-hidden="true"`,
