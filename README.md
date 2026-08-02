@@ -19,12 +19,14 @@ rather than to cover the full design. **Built:**
   `http.ServeMux`. Fails loudly on route collisions.
 - **`rastrillo dev [dir] [-- app args]`** — the development watch loop
   (design doc §11): watches `app/`, `actions/`, `manifest/`, and `cmd/` by
-  polling. On any change, reruns `rastrillo generate`, rebuilds the app
-  binary in `cmd/<name>`, and restarts the running process (graceful SIGTERM).
-  A failed generate or rebuild keeps the previous build serving; watching
-  resumes on the next file change. Useful for rapid iteration: edits to
-  `actions/` require regeneration (the binary uses generated code under `gen/`),
-  and `dev` does that automatically.
+  polling. On any change, reruns `rastrillo generate`, builds the app's
+  `./cmd/<name>` package to a temporary binary (cleaned up on exit), and
+  restarts the running process (graceful SIGTERM). A failed generate or
+  rebuild keeps the previous build serving; a failed restart keeps the loop
+  watching too — either way, the next save retries. Expects the
+  `rastrillo new` layout: exactly one directory under `cmd/`. Useful for
+  rapid iteration: edits to `actions/` require regeneration (the binary
+  uses generated code under `gen/`), and `dev` does that automatically.
 - **`rastrillo.Serve`** — the bootstrap (design doc §5): the SQLite
   pragma-ordering fix, `SetMaxOpenConns(1)`, additive migrations; the
   platform's activation contract (`-socket`/`-addr`/systemd
