@@ -238,3 +238,113 @@ func TestEmptyStatePostCTAWithoutHidden(t *testing.T) {
 		t.Errorf("no Hidden pairs were supplied, so none should render: %s", got)
 	}
 }
+
+func TestListBarSearchMinimalFixture(t *testing.T) {
+	got := render(t, "list-bar-search", map[string]any{"Action": "/posts"})
+	for _, want := range []string{
+		`<form class="rst-search"`, `role="search"`, `method="get"`, `action="/posts"`,
+		`type="search"`, `name="q"`, `<svg`, `type="submit"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+	// No Query, no Placeholder: neither attribute should appear empty.
+	if strings.Contains(got, `value=""`) || strings.Contains(got, `placeholder=""`) {
+		t.Errorf("empty attributes rendered instead of being omitted: %s", got)
+	}
+}
+
+// The input always has a real accessible name, whether or not the caller
+// supplied a placeholder.
+func TestListBarSearchInputAlwaysHasAnAccessibleName(t *testing.T) {
+	bare := render(t, "list-bar-search", map[string]any{"Action": "/posts"})
+	if !strings.Contains(bare, `aria-label="Search"`) {
+		t.Errorf("no default accessible name on the input: %s", bare)
+	}
+	named := render(t, "list-bar-search", map[string]any{
+		"Action": "/posts", "Placeholder": "Search posts",
+	})
+	if !strings.Contains(named, `aria-label="Search posts"`) {
+		t.Errorf("Placeholder did not become the accessible name: %s", named)
+	}
+	if !strings.Contains(named, `placeholder="Search posts"`) {
+		t.Errorf("missing placeholder attribute: %s", named)
+	}
+}
+
+func TestListBarSearchCarriesQueryAndHidden(t *testing.T) {
+	got := render(t, "list-bar-search", map[string]any{
+		"Action": "/posts",
+		"Query":  "release notes",
+		"Hidden": [][2]string{{"sort", "newest"}},
+	})
+	if !strings.Contains(got, `value="release notes"`) {
+		t.Errorf("query not preserved: %s", got)
+	}
+	if !strings.Contains(got, `<input type="hidden" name="sort" value="newest">`) {
+		t.Errorf("hidden pair not preserved across the search GET: %s", got)
+	}
+}
+
+// The submit control is present, is a real button, and defaults to
+// "Search" — a keyboard user with JS off has to be able to submit.
+func TestListSearchSubmitDefaultsAndOverrides(t *testing.T) {
+	def := render(t, "list-search-submit", map[string]any{})
+	if !strings.Contains(def, `<button class="rst-sr-only" type="submit">Search</button>`) {
+		t.Errorf("default submit control is wrong: %s", def)
+	}
+	over := render(t, "list-search-submit", map[string]any{"Label": "Buscar"})
+	if !strings.Contains(over, ">Buscar<") {
+		t.Errorf("Label override ignored: %s", over)
+	}
+}
+
+func TestListBarSearchPassesLabelThroughToSubmit(t *testing.T) {
+	got := render(t, "list-bar-search", map[string]any{"Action": "/posts", "Label": "Buscar"})
+	if !strings.Contains(got, ">Buscar<") {
+		t.Errorf("Label did not reach list-search-submit: %s", got)
+	}
+}
+
+func TestListBarWrapsTheSearchFormInAToolbarStrip(t *testing.T) {
+	got := render(t, "list-bar", map[string]any{
+		"SearchAction": "/posts",
+		"Query":        "notes",
+		"Placeholder":  "Search posts",
+		"Hidden":       [][2]string{{"sort", "newest"}},
+	})
+	for _, want := range []string{
+		`<div class="rst-lbar">`, `<form class="rst-search"`,
+		`action="/posts"`, `value="notes"`, `placeholder="Search posts"`,
+		`<input type="hidden" name="sort" value="newest">`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+	// This slice renders no filter or sort control (spec §3).
+	if strings.Contains(got, "<details") {
+		t.Errorf("list-bar rendered a dropdown, which is a later slice: %s", got)
+	}
+}
+
+// A list-bar built with only its action — the minimal fixture. Every
+// other key is absent, so this is where a stray empty attribute or a
+// lost default would show up.
+func TestListBarMinimalFixture(t *testing.T) {
+	got := render(t, "list-bar", map[string]any{"SearchAction": "/posts"})
+	if !strings.Contains(got, `<div class="rst-lbar">`) {
+		t.Errorf("missing toolbar strip: %s", got)
+	}
+	if !strings.Contains(got, `action="/posts"`) {
+		t.Errorf("missing form action: %s", got)
+	}
+	// The default accessible name survives the trip through list-bar's dict.
+	if !strings.Contains(got, `aria-label="Search"`) {
+		t.Errorf("the search input lost its default accessible name: %s", got)
+	}
+	if strings.Contains(got, `value=""`) || strings.Contains(got, `placeholder=""`) {
+		t.Errorf("empty attributes rendered instead of being omitted: %s", got)
+	}
+}
