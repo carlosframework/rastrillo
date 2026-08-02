@@ -118,3 +118,123 @@ func TestStatusPillMinimalFixture(t *testing.T) {
 		t.Errorf("rendered an empty tone attribute: %s", got)
 	}
 }
+
+func TestPageHeaderMinimalFixture(t *testing.T) {
+	got := render(t, "page-header", map[string]any{"Title": "Posts"})
+	if !strings.Contains(got, "<h1>Posts</h1>") {
+		t.Errorf("missing title: %s", got)
+	}
+	if strings.Contains(got, "<a ") {
+		t.Errorf("no action was supplied, so no link should render: %s", got)
+	}
+	if strings.Contains(got, "rst-page-header__sub") {
+		t.Errorf("no Sub was supplied, so no subhead should render: %s", got)
+	}
+}
+
+func TestPageHeaderWithSubAndAction(t *testing.T) {
+	got := render(t, "page-header", map[string]any{
+		"Title":       "Posts",
+		"Sub":         "Everything you have written, newest first.",
+		"ActionHref":  "/posts/new",
+		"ActionLabel": "Write a post",
+		"ActionIcon":  "plus",
+	})
+	for _, want := range []string{
+		"<h1>Posts</h1>",
+		"Everything you have written, newest first.",
+		`href="/posts/new"`,
+		"Write a post",
+		"<svg", // the icon resolved through Funcs()
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+// The action is a link with visible text, so its accessible name is the
+// text itself — the icon beside it must stay silent.
+func TestPageHeaderActionIconIsAriaHidden(t *testing.T) {
+	got := render(t, "page-header", map[string]any{
+		"Title": "Posts", "ActionHref": "/posts/new",
+		"ActionLabel": "Write a post", "ActionIcon": "plus",
+	})
+	if !strings.Contains(got, `aria-hidden="true"`) {
+		t.Errorf("the action icon is not aria-hidden: %s", got)
+	}
+}
+
+func TestEmptyStateMinimalFixture(t *testing.T) {
+	got := render(t, "empty-state", map[string]any{
+		"Body": "No posts yet. Your first one is a good place to start.",
+	})
+	if !strings.Contains(got, "No posts yet.") {
+		t.Errorf("missing body: %s", got)
+	}
+	if strings.Contains(got, "<form") || strings.Contains(got, "<a ") {
+		t.Errorf("no CTA was supplied, so none should render: %s", got)
+	}
+	if strings.Contains(got, "rst-empty__title") {
+		t.Errorf("no Title was supplied, so no heading should render: %s", got)
+	}
+}
+
+func TestEmptyStateLinkCTA(t *testing.T) {
+	got := render(t, "empty-state", map[string]any{
+		"Title":       "Nothing here yet",
+		"Body":        "No posts yet. Your first one is a good place to start.",
+		"ActionHref":  "/posts/new",
+		"ActionLabel": "Write a post",
+	})
+	// A real heading, not a styled paragraph: styling a <p> to look like
+	// a heading is WCAG 2.2 failure F2 (1.3.1) and heading navigation
+	// skips it entirely.
+	if !strings.Contains(got, `<h2 class="rst-empty__title">Nothing here yet</h2>`) {
+		t.Errorf("title is not a real heading element: %s", got)
+	}
+	if !strings.Contains(got, `<a class="rst-btn rst-btn--primary" href="/posts/new">Write a post</a>`) {
+		t.Errorf("missing link CTA: %s", got)
+	}
+	if strings.Contains(got, "<form") {
+		t.Errorf("a link CTA must not also render a form: %s", got)
+	}
+}
+
+// The POST CTA is an ordinary form: it works with JavaScript off, and
+// hidden pairs (a CSRF token among them) are entirely app-supplied.
+func TestEmptyStatePostCTACarriesHiddenPairs(t *testing.T) {
+	got := render(t, "empty-state", map[string]any{
+		"Body":        "No posts yet, and no sample data either.",
+		"PostAction":  "/posts/seed",
+		"ActionLabel": "Add sample posts",
+		"Hidden":      [][2]string{{"csrf", "tok-123"}, {"count", "5"}},
+	})
+	for _, want := range []string{
+		`method="post"`, `action="/posts/seed"`,
+		`<input type="hidden" name="csrf" value="tok-123">`,
+		`<input type="hidden" name="count" value="5">`,
+		`type="submit"`, "Add sample posts",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+// A caller that sets neither CTA, and a caller that sets a POST CTA with
+// no Hidden pairs, must both render without an Execute error — ranging
+// over an absent key is the classic way a partial blows up.
+func TestEmptyStatePostCTAWithoutHidden(t *testing.T) {
+	got := render(t, "empty-state", map[string]any{
+		"Body":        "No posts yet.",
+		"PostAction":  "/posts/seed",
+		"ActionLabel": "Add sample posts",
+	})
+	if !strings.Contains(got, `action="/posts/seed"`) {
+		t.Errorf("missing form action: %s", got)
+	}
+	if strings.Contains(got, "type=\"hidden\"") {
+		t.Errorf("no Hidden pairs were supplied, so none should render: %s", got)
+	}
+}
