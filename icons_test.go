@@ -43,9 +43,9 @@ func TestIconUnknownSlugRendersNothing(t *testing.T) {
 	}
 }
 
-// All three expected icon slugs are registered and non-empty.
+// All four expected icon slugs are registered and non-empty.
 func TestExpectedIconSlugsRegistered(t *testing.T) {
-	expected := []string{"chevron-down", "check", "plus"}
+	expected := []string{"chevron-down", "check", "plus", "search"}
 	for _, slug := range expected {
 		if got := Icon(slug); got == "" {
 			t.Errorf("Icon(%q) is empty or not registered", slug)

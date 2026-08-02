@@ -64,6 +64,9 @@ const (
 
 	// "New" / "create" actions (Lucide: plus).
 	iconPlus template.HTML = iconOpen + `<path d="M5 12h14"/><path d="M12 5v14"/></svg>`
+
+	// Search fields and filter bars (Lucide: search).
+	iconSearch template.HTML = iconOpen + `<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>`
 )
 
 // icons maps each Lucide slug to its vendored markup. Slugs are the
@@ -72,6 +75,7 @@ var icons = map[string]template.HTML{
 	"chevron-down": iconChevronDown,
 	"check":        iconCheck,
 	"plus":         iconPlus,
+	"search":       iconSearch,
 }
 
 // Icon renders one vendored icon by its Lucide slug for use as an
