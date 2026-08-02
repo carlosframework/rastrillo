@@ -22,6 +22,12 @@ rather than to cover the full design. **Built:**
   platform's activation contract (`-socket`/`-addr`/systemd
   `LISTEN_FDS`, matching `carlosframework/platform`'s `testdata/echoapp`
   exactly); `GET /healthz` and `GET /api/version` answered automatically.
+  **Covers only the plain "always-on instance" route kind** — a real
+  gap found deploying hello world for real (below): the platform's
+  hibernating instances also expect a `-db` flag (for the activator's
+  restore/checkpoint cycle), and its `-backing unit` systemd tenants
+  expect a `serve` subcommand plus inherited `LISTEN_FDS` socket
+  activation, neither of which `rastrillo.Serve` implements yet.
 - **`examples/helloworld`** — a real scaffolded app, checked in, proven
   to ship/promote/serve through the actual `carlos` binary — see
   [`hack/local-deploy-demo.sh`](hack/local-deploy-demo.sh).
@@ -64,6 +70,18 @@ required):
 ```
 PLATFORM_REPO=/path/to/carlosframework/platform hack/local-deploy-demo.sh
 ```
+
+## Live
+
+[`https://helloworld.dev.carlosframework.com`](https://helloworld.dev.carlosframework.com) —
+the v1 walking skeleton's hello world, deployed for real on the
+platform-dev environment: a real S3-backed deployment bucket, a real
+`carlos edge`, a real Let's Encrypt certificate — not the local-directory
+demo above. See `carlosframework/platform`'s
+`docs/superpowers/specs/2026-08-02-platform-dev-environment-design.md`.
+Routed as a plain always-on instance via a hand-written systemd unit
+(matching the flagship's `console.service` precedent), since this app
+predates `-hibernate`/`-backing unit` support noted above.
 
 ## See also
 
