@@ -18,7 +18,7 @@ rather than to cover the full design. **Built:**
   (design doc §4): walks `actions/`, emits `gen/router.go` on a Go 1.22
   `http.ServeMux`. Fails loudly on route collisions.
 - **`rastrillo dev [dir] [-- app args]`** — the development watch loop
-  (design doc §6): watches `app/`, `actions/`, `manifest/`, and `cmd/` by
+  (design doc §11): watches `app/`, `actions/`, `manifest/`, and `cmd/` by
   polling. On any change, reruns `rastrillo generate`, rebuilds the app
   binary in `cmd/<name>`, and restarts the running process (graceful SIGTERM).
   A failed generate or rebuild keeps the previous build serving; watching
