@@ -40,6 +40,7 @@
 // name, and a second one from the icon would only be read out twice.
 // An app using an icon as a control's ONLY label must not use these
 // constants bare: give that button or link an explicit aria-label.
+
 package rastrillo
 
 import "html/template"

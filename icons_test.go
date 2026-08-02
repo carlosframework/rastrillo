@@ -18,7 +18,7 @@ func TestVendoredIconsAreSelfContained(t *testing.T) {
 		s := string(svg)
 		for _, want := range []string{
 			"<svg", "</svg>", `viewBox="0 0 24 24"`,
-			`stroke="currentColor"`, `aria-hidden="true"`, `class="icon"`,
+			`stroke="currentColor"`, `aria-hidden="true"`, `class="icon"`, "<path",
 		} {
 			if !strings.Contains(s, want) {
 				t.Errorf("icon %q is missing %s: %s", slug, want, s)
@@ -40,6 +40,16 @@ func TestVendoredIconsAreSelfContained(t *testing.T) {
 func TestIconUnknownSlugRendersNothing(t *testing.T) {
 	if got := Icon("not-a-real-icon"); got != "" {
 		t.Errorf("Icon(%q) = %q, want empty string", "not-a-real-icon", got)
+	}
+}
+
+// All three expected icon slugs are registered and non-empty.
+func TestExpectedIconSlugsRegistered(t *testing.T) {
+	expected := []string{"chevron-down", "check", "plus"}
+	for _, slug := range expected {
+		if got := Icon(slug); got == "" {
+			t.Errorf("Icon(%q) is empty or not registered", slug)
+		}
 	}
 }
 
