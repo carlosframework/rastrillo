@@ -29,6 +29,9 @@ func runDev(args []string) error {
 	args, appArgs := splitAppArgs(args)
 	dir := "."
 	if len(args) > 0 {
+		if strings.HasPrefix(args[0], "-") {
+			return fmt.Errorf("unexpected flag %q before app directory — pass app flags after \"--\" (e.g. rastrillo dev -- %s)", args[0], args[0])
+		}
 		dir = args[0]
 	}
 	dir, err := filepath.Abs(dir)
@@ -55,14 +58,35 @@ func runDev(args []string) error {
 		cmd := exec.Command("go", "build", "-o", bin, appPkg)
 		cmd.Dir = dir
 		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-		return cmd.Run()
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("go build: %w", err)
+		}
+		return nil
 	}
 
+	// child and exitCh are only ever touched from the main loop's
+	// goroutine (the exit-watcher goroutine below only writes to its own
+	// exitCh, never reads child) — no locking needed. exitCh is remade on
+	// every start so a stale exit notification from a previous child can
+	// never be read as the current one's.
 	var child *exec.Cmd
+	var exitCh chan error
 	start := func() error {
-		child = exec.Command(bin, appArgs...)
-		child.Stdout, child.Stderr = os.Stdout, os.Stderr
-		return child.Start()
+		c := exec.Command(bin, appArgs...)
+		c.Dir = dir
+		c.Stdout, c.Stderr = os.Stdout, os.Stderr
+		if err := c.Start(); err != nil {
+			return err
+		}
+		child = c
+		ch := make(chan error, 1)
+		exitCh = ch
+		// Own the one legal Wait() on this process: the main loop learns
+		// of a self-exit via exitCh instead of polling, and stop() reads
+		// from this same channel instead of calling Wait() itself, which
+		// would race two waiters on one process.
+		go func() { ch <- c.Wait() }()
+		return nil
 	}
 	// stop SIGTERMs the child — rastrillo.Serve shuts down gracefully on
 	// SIGTERM — and SIGKILLs only if it lingers past 5s.
@@ -71,30 +95,30 @@ func runDev(args []string) error {
 			return
 		}
 		child.Process.Signal(syscall.SIGTERM)
-		done := make(chan error, 1)
-		go func() { done <- child.Wait() }()
 		select {
-		case <-done:
+		case <-exitCh:
 		case <-time.After(5 * time.Second):
 			child.Process.Kill()
-			<-done
+			<-exitCh
 		}
-		child = nil
+		child, exitCh = nil, nil
 	}
 
 	// The first build must succeed — fail loudly, like generate itself.
-	if err := rebuild(); err != nil {
-		return err
-	}
-	if err := start(); err != nil {
-		return err
-	}
-	defer stop()
-
+	// Snapshot before it, not after: an edit saved during the build
+	// would otherwise be folded into the baseline and never trigger a
+	// rebuild.
 	snap, err := devloop.Snapshot(dir, watchDirs)
 	if err != nil {
 		return err
 	}
+	if err := rebuild(); err != nil {
+		return fmt.Errorf("initial build: %w", err)
+	}
+	if err := start(); err != nil {
+		return fmt.Errorf("initial start: %w", err)
+	}
+	defer stop()
 
 	fmt.Printf("rastrillo dev: watching %s (poll %s)\n", strings.Join(watchDirs, ", "), pollInterval)
 
@@ -108,6 +132,14 @@ func runDev(args []string) error {
 		case <-sigCh:
 			fmt.Println("rastrillo dev: shutting down")
 			return nil
+		case err := <-exitCh:
+			// Nothing is serving until the next change — an app that
+			// compiles but dies at startup (port already bound, a panic
+			// in init) would otherwise sit invisible until someone
+			// noticed. child/exitCh go nil so stop() won't later signal
+			// a process that's already gone.
+			fmt.Fprintf(os.Stderr, "rastrillo dev: app exited: %v — will restart on next change\n", err)
+			child, exitCh = nil, nil
 		case <-ticker.C:
 			next, err := devloop.Snapshot(dir, watchDirs)
 			if err != nil {

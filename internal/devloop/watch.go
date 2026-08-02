@@ -14,7 +14,11 @@ import (
 )
 
 // Stamp fingerprints one file: size plus mtime is enough to detect an
-// edit without hashing content.
+// edit without hashing content. Known limit: on filesystems with coarse
+// (e.g. 1s) mtime granularity, a same-size edit landing inside the same
+// tick as a previous stat can be missed until the next change; ext4 and
+// APFS give mtimes nanosecond granularity, so this is a non-issue on dev
+// machines.
 type Stamp struct {
 	Size    int64
 	ModTime time.Time
