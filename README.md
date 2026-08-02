@@ -17,6 +17,14 @@ rather than to cover the full design. **Built:**
 - **`rastrillo generate [dir]`** — the filesystem-routing generator
   (design doc §4): walks `actions/`, emits `gen/router.go` on a Go 1.22
   `http.ServeMux`. Fails loudly on route collisions.
+- **`rastrillo dev [dir] [-- app args]`** — the development watch loop
+  (design doc §6): watches `app/`, `actions/`, `manifest/`, and `cmd/` by
+  polling. On any change, reruns `rastrillo generate`, rebuilds the app
+  binary in `cmd/<name>`, and restarts the running process (graceful SIGTERM).
+  A failed generate or rebuild keeps the previous build serving; watching
+  resumes on the next file change. Useful for rapid iteration: edits to
+  `actions/` require regeneration (the binary uses generated code under `gen/`),
+  and `dev` does that automatically.
 - **`rastrillo.Serve`** — the bootstrap (design doc §5): the SQLite
   pragma-ordering fix, `SetMaxOpenConns(1)`, additive migrations; the
   platform's activation contract (`-socket`/`-addr`/systemd
@@ -36,9 +44,9 @@ rather than to cover the full design. **Built:**
 stubbed here: the manifest system (`Resource`/`List`/`Form`, TOML sugar,
 codegen-with-skip), `sqlc` query colocation, the `Mergeable` event-sourced
 store shape, blobs, the crypto core, WebAuthn, the agents system, the
-component/UI vocabulary, localization, `rastrillo dev`'s watch loop, and
-the preloaded `CLAUDE.md`/skill scaffolding. Each is a real, separate
-piece of work — see the design doc for the shape of each.
+component/UI vocabulary, localization, and the preloaded `CLAUDE.md`/skill
+scaffolding. Each is a real, separate piece of work — see the design doc
+for the shape of each.
 
 ## A known implementation decision worth flagging
 
