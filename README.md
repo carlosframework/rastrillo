@@ -73,7 +73,7 @@ PLATFORM_REPO=/path/to/carlosframework/platform hack/local-deploy-demo.sh
 
 ## Live
 
-[`https://helloworld.dev.carlosframework.com`](https://helloworld.dev.carlosframework.com) —
+[`https://helloworld.dev.oncarlos.com`](https://helloworld.dev.oncarlos.com) —
 the v1 walking skeleton's hello world, deployed for real on the
 platform-dev environment: a real S3-backed deployment bucket, a real
 `carlos edge`, a real Let's Encrypt certificate — not the local-directory
@@ -81,7 +81,11 @@ demo above. See `carlosframework/platform`'s
 `docs/superpowers/specs/2026-08-02-platform-dev-environment-design.md`.
 Routed as a plain always-on instance via a hand-written systemd unit
 (matching the flagship's `console.service` precedent), since this app
-predates `-hibernate`/`-backing unit` support noted above.
+predates `-hibernate`/`-backing unit` support noted above. App hostnames
+live under `oncarlos.com`, not `carlosframework.com` — that's reserved
+for platform surfaces, e.g. the dev console itself at
+[`https://platform.dev.carlosframework.com`](https://platform.dev.carlosframework.com)
+(sign in with Keymail to see it and every other app on this deployment).
 
 ## See also
 
