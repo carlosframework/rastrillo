@@ -57,11 +57,12 @@ rather than rushed — see `internal/generate/generate.go`'s package doc.
 ## Try it
 
 ```
-go build -o rastrillo ./cmd/rastrillo
-./rastrillo new myapp
-cd myapp && go mod edit -replace github.com/carlosframework/rastrillo=../..   # until this is tagged
-go mod tidy && go build ./... && ./myapp -addr :8080
+go install github.com/carlosframework/rastrillo/cmd/rastrillo@latest
+rastrillo new myapp
+cd myapp && go mod tidy && go build ./... && ./myapp -addr :8080
 ```
+
+Or via Homebrew: `brew install carlosframework/tap/rastrillo`.
 
 To see it actually deployed through the real platform binary (local
 directory store + local registry + `carlos edge -dev`, no AWS/SSH
