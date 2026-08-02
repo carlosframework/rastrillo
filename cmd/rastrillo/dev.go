@@ -126,8 +126,13 @@ func runDev(args []string) error {
 				continue
 			}
 			stop()
+			// A failed restart must not exit the loop: that would leave
+			// nothing serving and require the user to manually restart
+			// `rastrillo dev`, defeating §11's no-manual-intervention
+			// goal. Log and keep watching; the next save retries.
 			if err := start(); err != nil {
-				return err
+				fmt.Fprintf(os.Stderr, "rastrillo dev: start: %v — will retry on next change\n", err)
+				continue
 			}
 		}
 	}
