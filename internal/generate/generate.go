@@ -29,9 +29,11 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
+	"go/build"
 	"go/format"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -240,9 +242,9 @@ func isConstraintGroup(g *ast.CommentGroup) bool {
 }
 
 // UntaggedActions returns the SourcePaths of the given actions whose
-// files lack the BuildTag constraint — files `go build ./...` would try
-// (and fail) to compile. `rastrillo generate --check` fails on these
-// with the exact lines to add.
+// files a default `go build ./...` would try (and fail) to compile.
+// `rastrillo generate --check` fails on these with the exact line to
+// add.
 func UntaggedActions(actionsDir string, actions []Action) ([]string, error) {
 	var out []string
 	for _, a := range actions {
@@ -250,26 +252,33 @@ func UntaggedActions(actionsDir string, actions []Action) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		if !HasBuildTag(src) {
+		if !SkippedByDefaultBuild(src) {
 			out = append(out, a.SourcePath)
 		}
 	}
 	return out, nil
 }
 
-// HasBuildTag reports whether src carries a `//go:build` constraint
-// naming BuildTag above its package clause.
-func HasBuildTag(src []byte) bool {
-	for _, line := range strings.Split(string(src), "\n") {
-		t := strings.TrimSpace(line)
-		if strings.HasPrefix(t, "package ") {
-			return false
-		}
-		if strings.HasPrefix(t, "//go:build") && strings.Contains(t, BuildTag) {
-			return true
-		}
+// SkippedByDefaultBuild reports whether a default build skips src —
+// which is exactly what lets `go build ./...` pass over generator
+// input. The scaffolded spelling is `//go:build rastrillo_actions`
+// (BuildTag), but the check evaluates the file with the go tool's own
+// rules (go/build's MatchFile: constraints, GOOS/GOARCH and release
+// tags included) rather than grepping for the tag — a file with
+// `//go:build !rastrillo_actions` names the tag yet compiles in every
+// default build, and any other never-satisfied constraint earns the
+// same skip the scaffolded one does.
+func SkippedByDefaultBuild(src []byte) bool {
+	ctxt := build.Default
+	ctxt.OpenFile = func(string) (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(src)), nil
 	}
-	return false
+	match, err := ctxt.MatchFile(".", "action.go")
+	if err != nil {
+		// Unparseable header: let the compiler complain, not --check.
+		return false
+	}
+	return !match
 }
 
 // Router renders gen/router.go: one import per action package, one

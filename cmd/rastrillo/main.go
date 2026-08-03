@@ -43,7 +43,7 @@ func usage() {
 Usage:
   rastrillo new <name>                          scaffold a new app in ./<name>
   rastrillo generate [flags] [dir]              run the filesystem-routing generator (flags before dir; default dir: .)
-       --check --default-locale <code>          verify only: route collisions, i18n catalogs
+       --check --default-locale <code>          verify only: route collisions, action build tags, i18n catalogs
   rastrillo dev [dir] [-- app args]             watch + regenerate + rebuild + restart (default dir: .)
 `)
 }

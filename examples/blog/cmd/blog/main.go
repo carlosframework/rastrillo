@@ -43,7 +43,10 @@ func main() {
 	}
 	defer db.Close()
 	// The handle above is this app's own; blank DBPath so Serve doesn't
-	// open a second one on the same file.
+	// open a second one on the same file. Blanking it also skips Serve's
+	// eager Ping, so materializing the file at boot (a hibernate route's
+	// activator replicates it from boot) is now blog.Open's job — its
+	// CREATE TABLE migration does it.
 	opts.DBPath = ""
 
 	// A fresh Ctx per request. Actor.Human is true and Actor.Name empty:

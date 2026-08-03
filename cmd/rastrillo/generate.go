@@ -15,16 +15,17 @@ import (
 // underneath (design doc §11) — one code path, not two.
 //
 // --check is the framework's half of `carlos vet` (§11): verify and
-// report, write nothing. It covers route collisions (§4) and i18n
-// catalog completeness (§10) today; the rest of §11's list arrives with
-// the subsystems it checks.
+// report, write nothing. It covers route collisions (§4), the action
+// build-tag convention (friction log F9), and i18n catalog completeness
+// (§10) today; the rest of §11's list arrives with the subsystems it
+// checks.
 //
 // Flags come before the directory: FlagSet.Parse stops at the first
 // non-flag argument, which is what keeps the older bare `rastrillo
 // generate <dir>` form working unchanged.
 func runGenerate(args []string) error {
 	fset := flag.NewFlagSet("generate", flag.ContinueOnError)
-	check := fset.Bool("check", false, "verify without writing (route collisions, i18n catalog completeness)")
+	check := fset.Bool("check", false, "verify without writing (route collisions, action build tags, i18n catalog completeness)")
 	defaultLocale := fset.String("default-locale", "en", "locale every other catalog is checked against (design doc §10)")
 	if err := fset.Parse(args); err != nil {
 		return err
@@ -82,6 +83,7 @@ func runGenerate(args []string) error {
 			}
 			fmt.Fprintf(os.Stderr, "each needs `//go:build %s` (then a blank line) above its package clause,\n", generate.BuildTag)
 			fmt.Fprintln(os.Stderr, "so `go build ./...` and friends skip generator input instead of failing on it")
+			fmt.Fprintln(os.Stderr, "(a file that already carries a //go:build line needs it amended, never a second line)")
 			return fmt.Errorf("%d action file(s) missing //go:build %s", len(untagged), generate.BuildTag)
 		}
 

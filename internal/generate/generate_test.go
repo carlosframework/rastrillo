@@ -3,6 +3,7 @@ package generate
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -240,7 +241,7 @@ func TestUntaggedActions(t *testing.T) {
 	}
 }
 
-func TestHasBuildTag(t *testing.T) {
+func TestSkippedByDefaultBuild(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		src  string
@@ -248,12 +249,19 @@ func TestHasBuildTag(t *testing.T) {
 	}{
 		{"tagged", "//go:build " + BuildTag + "\n\npackage actions\n", true},
 		{"untagged", "package actions\n", false},
-		{"different tag", "//go:build ignore\n\npackage actions\n", false},
+		// The check evaluates the constraint, not the tag name: any
+		// never-satisfied constraint earns the ./... skip, and a
+		// negated tag names BuildTag yet compiles in every default
+		// build — the exact breakage --check exists to catch.
+		{"different but excluding tag", "//go:build ignore\n\npackage actions\n", true},
+		{"negated tag still compiles by default", "//go:build !" + BuildTag + "\n\npackage actions\n", false},
+		{"satisfied-by-default expression", "//go:build " + BuildTag + " || " + runtime.GOOS + "\n\npackage actions\n", false},
+		{"legacy plus-build line", "// +build " + BuildTag + "\n\npackage actions\n", true},
 		{"tag after package clause does not count", "package actions\n\n//go:build " + BuildTag + "\n", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := HasBuildTag([]byte(tc.src)); got != tc.want {
-				t.Errorf("HasBuildTag = %v, want %v", got, tc.want)
+			if got := SkippedByDefaultBuild([]byte(tc.src)); got != tc.want {
+				t.Errorf("SkippedByDefaultBuild = %v, want %v", got, tc.want)
 			}
 		})
 	}
