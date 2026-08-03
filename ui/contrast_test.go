@@ -207,44 +207,72 @@ func TestContrastMathMatchesDocumentedDangerFillRatios(t *testing.T) {
 	}
 }
 
-// TestThemeTokenContrastMeetsWCAG is the real gate: every pair Task 5's
-// brief names, in every authored theme. See the file doc comment above
-// for exactly what this does and does not verify.
+// TestThemeTokenContrastMeetsWCAG is the real gate: the full pair table
+// tokens.css's own "WCAG 2.2 AA, measured" header comment documents
+// (§ near the top of tokens.css), enforced at each row's documented
+// floor, in every authored theme. See the file doc comment above for
+// exactly what this does and does not verify.
+//
+// --rst-text-faint is held to the same 4.5:1 body-text floor as
+// --rst-text/--rst-text-muted, not AA's lower 3:1 large-text/graphic
+// floor: this branch puts it on normal-size, normal-weight text
+// (.rst-count-line, .rst-field__hint) and on .rst-lrow--head (11.5px,
+// well under WCAG's ~18pt/14pt-bold "large text" threshold even with its
+// letter-spacing and uppercase transform), so 3:1 would be the wrong bar
+// for what this token is actually used for. tokens.css's own header
+// table already publishes it at 4.5:1 throughout (its tightest pair,
+// 4.67:1 in light on --rst-bg) — this test previously asserted only one
+// --rst-text-faint pair at a 3:1 floor, which is loose enough that a
+// real regression (a token change bringing that pair down to, say,
+// 3.52:1) would still pass; raising it to 4.5:1, and adding the other
+// three --rst-text-faint pairs the header table documents, closes that
+// gap.
 func TestThemeTokenContrastMeetsWCAG(t *testing.T) {
 	type pair struct {
 		fg, bg string
 		min    float64
 		why    string
 	}
-	tones := []string{"neutral", "positive", "warning", "negative"}
-	var pairs []pair
-	for _, tone := range tones {
-		pairs = append(pairs, pair{
-			fg: "--rst-tone-" + tone + "-fg", bg: "--rst-tone-" + tone + "-bg",
-			min: 4.5, why: "status pill text",
-		})
+	// Transcribed from tokens.css's own "WCAG 2.2 AA, measured" header
+	// table plus the .rst-btn--danger comment's documented pair (not in
+	// the main table, since it reuses --rst-tone-negative-fg as a solid
+	// fill rather than declaring a dedicated --rst-danger-* token) — every
+	// row that table publishes, at its documented floor. If tokens.css's
+	// header table grows a row, add it here too; the two are meant to
+	// stay in lockstep.
+	pairs := []pair{
+		{"--rst-text", "--rst-surface", 4.5, "body text on a card"},
+		{"--rst-text", "--rst-bg", 4.5, "body text"},
+		{"--rst-text", "--rst-surface-2", 4.5, "body text on a card"},
+		{"--rst-text", "--rst-accent-soft", 4.5, "body text on an accent-tinted surface"},
+		{"--rst-text-muted", "--rst-surface", 4.5, "muted text on a card"},
+		{"--rst-text-muted", "--rst-bg", 4.5, "muted text"},
+		{"--rst-text-muted", "--rst-surface-2", 4.5, "muted text on a card"},
+		{"--rst-text-muted", "--rst-accent-soft", 4.5, "muted text on an accent-tinted surface"},
+		{"--rst-text-faint", "--rst-surface", 4.5, "faint text on a card (.rst-field__hint)"},
+		{"--rst-text-faint", "--rst-bg", 4.5, "faint text — the tightest pair in the set (4.67 light / 6.17 dark)"},
+		{"--rst-text-faint", "--rst-surface-2", 4.5, "faint text on a card"},
+		{"--rst-text-faint", "--rst-accent-soft", 4.5, "faint text on an accent-tinted surface"},
+		{"--rst-accent", "--rst-surface", 4.5, "text + focus ring"},
+		{"--rst-accent", "--rst-bg", 4.5, "text + focus ring"},
+		{"--rst-accent", "--rst-surface-2", 4.5, "text"},
+		{"--rst-accent", "--rst-accent-soft", 4.5, "text"},
+		{"--rst-on-accent", "--rst-accent", 4.5, "primary button label"},
+		{"--rst-on-accent", "--rst-accent-strong", 4.5, "primary button label, hover"},
+		{"--rst-line-strong", "--rst-surface", 3.0, "control border (1.4.11 boundary, not text)"},
+		{"--rst-line-strong", "--rst-bg", 3.0, "control border"},
+		{"--rst-line-strong", "--rst-surface-2", 3.0, "control border"},
+		{"--rst-tone-neutral-fg", "--rst-tone-neutral-bg", 4.5, "status pill text"},
+		{"--rst-tone-positive-fg", "--rst-tone-positive-bg", 4.5, "status pill text"},
+		{"--rst-tone-warning-fg", "--rst-tone-warning-bg", 4.5, "status pill text"},
+		{"--rst-tone-negative-fg", "--rst-tone-negative-bg", 4.5, "status pill text"},
+		// Not in tokens.css's main header table — documented separately in
+		// the .rst-btn--danger comment (Task 4), which reuses
+		// --rst-tone-negative-fg as a solid fill rather than declaring a
+		// dedicated --rst-danger-* pair. This is the real pair the danger
+		// button's label renders against, so it belongs in the gate anyway.
+		{"--rst-on-accent", "--rst-tone-negative-fg", 4.5, "danger button label"},
 	}
-	pairs = append(pairs,
-		pair{"--rst-text", "--rst-bg", 4.5, "body text"},
-		pair{"--rst-text", "--rst-surface", 4.5, "body text on a card"},
-		pair{"--rst-text-muted", "--rst-bg", 4.5, "muted text"},
-		pair{"--rst-text-muted", "--rst-surface", 4.5, "muted text on a card"},
-		// Non-essential chrome only (row-menu glyphs, faint captions) — held
-		// to AA's lower 3:1 large-text/graphic floor, not the 4.5:1 body-text
-		// floor. If a theme fails even 3:1 here, that is a real regression
-		// to fix, not a reason to relax this assertion further — flag it as
-		// BLOCKED and escalate rather than weakening the test to match.
-		pair{"--rst-text-faint", "--rst-bg", 3.0, "non-essential chrome"},
-		// The one interactive fg/bg pair that is not a --rst-tone-* pill:
-		// primary buttons and the accent focus ring.
-		pair{"--rst-on-accent", "--rst-accent", 4.5, "primary button label"},
-		// The danger button reuses --rst-tone-negative-fg as a solid fill
-		// (see tokens.css's .rst-btn--danger comment, Task 4) rather than
-		// declaring a dedicated --rst-danger-* pair — this is the real pair
-		// its label renders against, so it belongs in the gate even though
-		// it is not literally a new custom property.
-		pair{"--rst-on-accent", "--rst-tone-negative-fg", 4.5, "danger button label"},
-	)
 
 	for themeName, tokens := range themeTokens(t) {
 		t.Run(themeName, func(t *testing.T) {

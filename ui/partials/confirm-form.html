@@ -10,7 +10,25 @@
      Keys:
        Action, Label  strings, required
        Danger    bool, optional — the darkened danger fill
-       Hidden    map, optional — hidden inputs, key-ordered
+       Hidden    [][2]string, optional — hidden inputs, in caller order
+              (design ruling, supersedes spec §3.13's map: this partial
+              used to take Hidden as a map, key-ordered by
+              html/template's own map-range sort — the one partial in the
+              library that didn't match empty-state/list-bar-search/
+              list-bar's [][2]string, the library's majority shape for
+              this exact kind of data. That mismatch is a live footgun,
+              not just an inconsistency: passing the majority [][2]string
+              shape to the map version renders
+              name="0" value="[csrf tok-123]" with NO error — Go's
+              html/template happily ranges a slice as if it were a
+              single-entry map, "0" becomes the field name, and the
+              actual CSRF token silently vanishes from the POST, on the
+              one form in the library that guards a destructive action.
+              The slice shape fails the reverse direction loudly instead
+              (a map passed where [][2]string is wanted is a template
+              Execute error, not a silent wrong-shaped render). Emission
+              order is the caller's slice order — there is no longer a
+              key-sort guarantee to rely on.
        CancelHref, CancelLabel  strings, optional — label default resolved
               through T ("rastrillo.ui.cancel" — "Cancel" in the framework
               base catalog; see Funcs/FuncsWith). An app passing its own
@@ -18,7 +36,7 @@
               in the DOM, before the submit button — see the doc comment
               above: that order is load-bearing for tab order, not
               incidental to how the default renders. */}}
-{{define "confirm-form"}}<form class="rst-form-actions" method="post" action="{{.Action}}">{{range $k, $v := .Hidden}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}{{if .CancelHref}}<a class="rst-btn rst-btn--ghost" href="{{.CancelHref}}">{{if .CancelLabel}}{{.CancelLabel}}{{else}}{{T "rastrillo.ui.cancel"}}{{end}}</a>{{end}}<button type="submit" class="rst-btn{{if .Danger}} rst-btn--danger{{else}} rst-btn--primary{{end}}">{{.Label}}</button></form>{{end}}
+{{define "confirm-form"}}<form class="rst-form-actions" method="post" action="{{.Action}}">{{range .Hidden}}<input type="hidden" name="{{index . 0}}" value="{{index . 1}}">{{end}}{{if .CancelHref}}<a class="rst-btn rst-btn--ghost" href="{{.CancelHref}}">{{if .CancelLabel}}{{.CancelLabel}}{{else}}{{T "rastrillo.ui.cancel"}}{{end}}</a>{{end}}<button type="submit" class="rst-btn{{if .Danger}} rst-btn--danger{{else}} rst-btn--primary{{end}}">{{.Label}}</button></form>{{end}}
 
 {{/* back-nav — the ← return link above a confirm or detail page. */}}
 {{define "back-nav"}}<p class="rst-back-nav"><a href="{{.Href}}">← {{.Label}}</a></p>{{end}}

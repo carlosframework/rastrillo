@@ -816,7 +816,11 @@ func allPartials() []struct {
 		}},
 		{"confirm-form", map[string]any{
 			"Action": "/orders/1/refund", "Label": "Refund €10.00", "Danger": true,
-			"Hidden": map[string]any{"csrf": "tok", "id": "42"}, "CancelHref": "/orders/1",
+			// [][2]string, caller order — csrf first, deliberately: see
+			// confirm-form.html's Hidden doc comment for why the map shape
+			// this used to take is a real footgun (silent CSRF-token loss),
+			// not just a stylistic mismatch with the rest of the library.
+			"Hidden": [][2]string{{"csrf", "tok"}, {"id", "42"}}, "CancelHref": "/orders/1",
 		}},
 		{"back-nav", map[string]any{"Href": "/orders/1", "Label": "Order AB3PX"}},
 		{"bulk-bar", map[string]any{
@@ -862,6 +866,11 @@ func TestUIDefaultsResolveAndRebind(t *testing.T) {
 	if got := render(t, "list-bar-search", map[string]any{}); !strings.Contains(got, `aria-label="Search"`) {
 		t.Errorf("default aria-label lost: %s", got)
 	}
+	// bulk-bar's DoneLabel default (rastrillo.ui.done) — without it the
+	// icon-only close link would render aria-label="".
+	if got := render(t, "bulk-bar", map[string]any{"DoneHref": "/orders", "Count": "3 selected", "MenuLabel": "Actions"}); !strings.Contains(got, `aria-label="Done selecting"`) {
+		t.Errorf("default DoneLabel lost: %s", got)
+	}
 	// FuncsWith rebinds every default.
 	tmpl := template.Must(template.New("").Funcs(FuncsWith(func(key string, _ ...any) string {
 		return "X-" + key
@@ -880,6 +889,13 @@ func TestUIDefaultsResolveAndRebind(t *testing.T) {
 	if !strings.Contains(buf.String(), `aria-label="X-rastrillo.ui.search_submit"`) {
 		t.Errorf("FuncsWith did not rebind list-bar-search's aria-label default: %s", buf.String())
 	}
+	buf.Reset()
+	if err := tmpl.ExecuteTemplate(&buf, "bulk-bar", map[string]any{"DoneHref": "/orders", "Count": "3 selected", "MenuLabel": "Actions"}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `aria-label="X-rastrillo.ui.done"`) {
+		t.Errorf("FuncsWith did not rebind bulk-bar's DoneLabel default: %s", buf.String())
+	}
 }
 
 // A caller-supplied value always wins over T's default — the T threading
@@ -893,6 +909,11 @@ func TestUIDefaultsYieldToExplicitValues(t *testing.T) {
 	}
 	if got := render(t, "list-bar-search", map[string]any{"Placeholder": "Buscar entradas"}); !strings.Contains(got, `aria-label="Buscar entradas"`) {
 		t.Errorf("explicit Placeholder lost to T's default: %s", got)
+	}
+	if got := render(t, "bulk-bar", map[string]any{
+		"DoneHref": "/orders", "DoneLabel": "Terminar selección", "Count": "3 selected", "MenuLabel": "Actions",
+	}); !strings.Contains(got, `aria-label="Terminar selección"`) {
+		t.Errorf("explicit DoneLabel lost to T's default: %s", got)
 	}
 	got := render(t, "confirm-form", map[string]any{
 		"Action": "/x", "Label": "Delete", "CancelHref": "/x", "CancelLabel": "Never mind",
@@ -1149,12 +1170,13 @@ func TestConfirmFormShape(t *testing.T) {
 	if cancel, submit := strings.Index(got, `<a class="rst-btn rst-btn--ghost"`), strings.Index(got, `<button type="submit"`); cancel == -1 || submit == -1 || cancel > submit {
 		t.Errorf("cancel must precede the submit button in the DOM: %s", got)
 	}
-	// Hidden inputs are key-ordered (Go's html/template sorts map range
-	// keys), so a caller relying on that ordering — e.g. a CSRF token
-	// expected before other fields — gets a stable, tested guarantee
-	// rather than an accident of map iteration.
+	// Hidden inputs render in the caller's slice order, not key-sorted —
+	// [][2]string has no keys to sort. The fixture passes csrf before id
+	// deliberately (see confirm-form.html's Hidden doc comment), so this
+	// asserts the caller's own ordering came through unchanged; it is not
+	// a guarantee the partial itself makes about any particular field.
 	if csrf, id := strings.Index(got, `name="csrf"`), strings.Index(got, `name="id"`); csrf == -1 || id == -1 || csrf > id {
-		t.Errorf("hidden inputs must render key-ordered (csrf before id): %s", got)
+		t.Errorf("hidden inputs must render in caller order (fixture puts csrf before id): %s", got)
 	}
 }
 
