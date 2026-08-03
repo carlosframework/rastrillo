@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/carlosframework/rastrillo/ui"
 )
 
 // runNew implements `rastrillo new <name>`: go.mod, one starter action,
@@ -27,6 +29,7 @@ func runNew(args []string) error {
 		name,
 		filepath.Join(name, "actions"),
 		filepath.Join(name, "cmd", name),
+		filepath.Join(name, "static"),
 	}
 	for _, d := range dirs {
 		if err := os.MkdirAll(d, 0o755); err != nil {
@@ -38,6 +41,10 @@ func runNew(args []string) error {
 		filepath.Join(name, "go.mod"):                  fmt.Sprintf(goModTemplate, name),
 		filepath.Join(name, "actions", "index.GET.go"): actionTemplate,
 		filepath.Join(name, "cmd", name, "main.go"):    fmt.Sprintf(mainTemplate, name),
+		// The design-token stylesheet, delivered once. rastrillo.Serve
+		// never serves CSS at runtime; from here on this is an ordinary
+		// app-owned file that new/generate never touch again.
+		filepath.Join(name, "static", "tokens.css"): string(ui.TokensCSS()),
 	}
 	for path, content := range files {
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -49,6 +56,7 @@ func runNew(args []string) error {
 	fmt.Println("  go.mod")
 	fmt.Println("  actions/index.GET.go")
 	fmt.Printf("  cmd/%s/main.go\n", name)
+	fmt.Println("  static/tokens.css")
 
 	if err := runGenerate([]string{name}); err != nil {
 		return fmt.Errorf("initial generate: %w", err)
@@ -102,6 +110,12 @@ func main() {
 	// Ctx per request here instead.
 	ctx := &rastrillo.Ctx{Logger: logger}
 	mux := gen.Router(func(*http.Request) *rastrillo.Ctx { return ctx })
+
+	// The app serves its own static files — the framework never does.
+	// static/tokens.css was scaffolded here once by rastrillo new; edit
+	// it, replace it, or delete this handler if you serve assets some
+	// other way.
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	// Run speaks the platform's activation contract: -socket/-addr/-db
 	// flags for agent exec children, or a bare "serve" subcommand for

@@ -1,0 +1,15 @@
+{{/* status-pill — a status as a tinted pill.
+
+     The label is always visible text. State is never colour alone (spec
+     §5; WCAG 2.2 AA), and the leading dot is decoration on top of the
+     word, not a substitute for it.
+
+     Keys:
+       Label  string, required — the visible status text
+       Tone   string, optional — "neutral" (the default), "positive",
+              "warning" or "negative". tokens.css defines the
+              foreground/background pair for each.
+
+     Resolving an app's raw status value to a Tone/Label pair is product
+     logic and stays in the calling app. */}}
+{{define "status-pill"}}<span class="rst-status" data-tone="{{if .Tone}}{{.Tone}}{{else}}neutral{{end}}">{{.Label}}</span>{{end}}
