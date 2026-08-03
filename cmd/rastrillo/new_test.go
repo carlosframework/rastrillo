@@ -50,13 +50,48 @@ func TestNewStillScaffoldsTheRestOfTheApp(t *testing.T) {
 // never serves CSS — that is the app's job, in the app's own code.
 func TestMainTemplateServesTheStaticDir(t *testing.T) {
 	src := fmt.Sprintf(mainTemplate, "blogapp")
-	want := `mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))`
+	want := `mux.Handle("GET /static/", http.FileServerFS(app.StaticFS))`
 	if !strings.Contains(src, want) {
 		t.Errorf("main.go does not serve static/:\n%s", src)
 	}
 	// It has to come after the router exists, or it has nothing to attach to.
 	if strings.Index(src, "gen.Router(") > strings.Index(src, want) {
 		t.Error("the static handler is registered before gen.Router builds the mux")
+	}
+}
+
+// The scaffolded app embeds static/ — the platform deploys the binary
+// alone, so a loose static directory would not travel with it (F8).
+func TestNewScaffoldsEmbeddedStatic(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := runNew([]string{"blogapp"}); err != nil {
+		t.Fatalf("runNew: %v", err)
+	}
+	src, err := os.ReadFile(filepath.Join("blogapp", "assets.go"))
+	if err != nil {
+		t.Fatalf("expected a scaffolded assets.go: %v", err)
+	}
+	for _, want := range []string{"//go:embed static", "var StaticFS embed.FS", "package blogapp"} {
+		if !strings.Contains(string(src), want) {
+			t.Errorf("assets.go missing %q:\n%s", want, src)
+		}
+	}
+}
+
+// packageName derives a Go identifier from the app name for the
+// scaffolded root package, since the name is also the module path
+// where hyphens (and other non-identifier characters) are legal.
+func TestPackageName(t *testing.T) {
+	cases := []struct{ name, want string }{
+		{"blogapp", "blogapp"},
+		{"my-blog", "myblog"},
+		{"9lives", "app9lives"},
+		{"--", "app"},
+	}
+	for _, c := range cases {
+		if got := packageName(c.name); got != c.want {
+			t.Errorf("packageName(%q) = %q, want %q", c.name, got, c.want)
+		}
 	}
 }
 

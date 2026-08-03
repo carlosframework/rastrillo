@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"unicode"
 
 	"github.com/carlosframework/rastrillo/ui"
 )
@@ -41,6 +43,7 @@ func runNew(args []string) error {
 		filepath.Join(name, "go.mod"):                  fmt.Sprintf(goModTemplate, name),
 		filepath.Join(name, "actions", "index.GET.go"): actionTemplate,
 		filepath.Join(name, "cmd", name, "main.go"):    fmt.Sprintf(mainTemplate, name),
+		filepath.Join(name, "assets.go"):               fmt.Sprintf(assetsTemplate, packageName(name)),
 		// The design-token stylesheet, delivered once. rastrillo.Serve
 		// never serves CSS at runtime; from here on this is an ordinary
 		// app-owned file that new/generate never touch again.
@@ -56,6 +59,7 @@ func runNew(args []string) error {
 	fmt.Println("  go.mod")
 	fmt.Println("  actions/index.GET.go")
 	fmt.Printf("  cmd/%s/main.go\n", name)
+	fmt.Println("  assets.go")
 	fmt.Println("  static/tokens.css")
 
 	if err := runGenerate([]string{name}); err != nil {
@@ -67,6 +71,25 @@ func runNew(args []string) error {
 	// that package by its own import path so the binary actually lands here.
 	fmt.Printf("\ncd %s && go build ./cmd/%[1]s\n", name)
 	return nil
+}
+
+// packageName derives a valid Go identifier from the app name for the
+// scaffolded root package: name also serves as the module path, where
+// hyphens (and other punctuation) are legal, but a package clause
+// needs an identifier. Non-identifier runes are dropped rather than
+// rejected, so every name rastrillo new already accepts keeps working.
+func packageName(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		}
+	}
+	out := b.String()
+	if out == "" || unicode.IsDigit(rune(out[0])) {
+		out = "app" + out
+	}
+	return out
 }
 
 const goModTemplate = `module %s
@@ -95,6 +118,20 @@ func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
 }
 `
 
+// assetsTemplate is the scaffolded assets.go: static/ compiled into
+// the binary, because the platform deploys the binary alone and a
+// cwd-relative static directory would not travel with it (F8).
+const assetsTemplate = `// The app's static files, compiled into the binary: the platform
+// deploys the binary alone, so a loose static/ directory would not
+// travel with it.
+package %[1]s
+
+import "embed"
+
+//go:embed static
+var StaticFS embed.FS
+`
+
 const mainTemplate = `package main
 
 import (
@@ -104,6 +141,7 @@ import (
 
 	"github.com/carlosframework/rastrillo"
 
+	app "%[1]s"
 	"%[1]s/gen"
 )
 
@@ -118,10 +156,10 @@ func main() {
 	mux := gen.Router(func(*http.Request) *rastrillo.Ctx { return ctx })
 
 	// The app serves its own static files — the framework never does.
-	// static/tokens.css was scaffolded here once by rastrillo new; edit
-	// it, replace it, or delete this handler if you serve assets some
-	// other way.
-	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	// They are embedded (see assets.go), so the binary is
+	// self-contained wherever and however it starts; edit static/ and
+	// rebuild — rastrillo dev does that on save.
+	mux.Handle("GET /static/", http.FileServerFS(app.StaticFS))
 
 	// Run speaks the platform's activation contract: -socket/-addr/-db
 	// flags for agent exec children, or a bare "serve" subcommand for
