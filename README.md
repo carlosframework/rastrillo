@@ -42,14 +42,17 @@ rather than to cover the full design. **Built:**
   dir. Hibernation requires nothing else from the app: the activator
   owns the restore/replicate cycle, and `Serve`'s SIGTERM drain fits
   inside its SIGKILL budget. `rastrillo.Resolve` is the same resolution
-  without the serving, for apps that need the resolved invocation first
-  — `examples/blog` opens its own database from the resolved path
-  before building its mux.
+  without the serving, for apps that need the resolved invocation before
+  doing anything else with it — e.g. one that wants the resolved
+  `DBPath` without going through `Options.Router`.
 - **`rastrillo.Serve`** — the bootstrap (design doc §5): the SQLite
   pragma-ordering fix, `SetMaxOpenConns(1)`, additive migrations; the
   platform's activation contract (`Options.Socket`/`Options.Addr`/systemd
   `LISTEN_FDS`, matching `carlosframework/platform`'s `testdata/echoapp`
   exactly); `GET /healthz` and `GET /api/version` answered automatically.
+  An app that keeps its database in `Ctx` sets `Options.Router` instead
+  of `Options.Mux` and is handed the `*sql.DB` Serve opened;
+  `rastrillo.OpenDB` is the same corrected opener exported for tests.
   Between `Serve` and `Run`, the activation contract is covered end to
   end: every route kind the platform runs — always-on instance,
   hibernating exec child, unit tenant — boots the same scaffolded app.

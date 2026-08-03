@@ -131,6 +131,11 @@ contract without serving, so this app honors `-db`, `serve`, and
 `$STATE_DIRECTORY` while still opening its own handle (see
 `cmd/blog/main.go`). The hand-copied pragma DSN remains — the real fix
 is still the next-slice shape above.
+*Fixed:* `Options.Router` now receives the `*sql.DB` that `Serve`
+opened — pragmas, eager ping, and `Options.Migrations` applied — so
+`cmd/blog/main.go` is back to plain `Run` and the hand-copied DSN is
+gone. `rastrillo.OpenDB` is the same opener exported, which is what
+`blog.Open` (kept for the tests) now wraps.
 
 **F5 — `actions/` cannot hold shared code, by two rules.** The generator
 copies only files matching `<name>.<VERB>.go`, and separately skips any

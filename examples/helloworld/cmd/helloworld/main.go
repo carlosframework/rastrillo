@@ -14,8 +14,9 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	// A single shared Ctx for now: this app has no per-request state
-	// yet (no DB, no locale, no scope). Once it does, build a fresh
-	// Ctx per request here instead.
+	// yet (no DB, no locale, no scope). Once it needs a database,
+	// switch Options.Mux for Options.Router and build the mux from
+	// the *sql.DB Serve hands back.
 	ctx := &rastrillo.Ctx{Logger: logger}
 	mux := gen.Router(func(*http.Request) *rastrillo.Ctx { return ctx })
 

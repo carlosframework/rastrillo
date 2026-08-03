@@ -39,15 +39,14 @@ func Run(opts Options) error {
 // Resolve applies the platform's activation argv and environment to
 // opts — everything Run does short of serving — and returns the result.
 // Most apps just call Run; Resolve is the seam for the ones that need
-// the resolved invocation first. The motivating case is an app that
-// opens its own database handle before building its mux (Serve's DBPath
-// opens one it never hands back — see examples/blog and its friction
-// log's F4): it resolves, opens opts.DBPath itself, blanks it so Serve
-// won't open a second handle on the same file, and calls Serve. One
-// duty transfers with the handle: Serve's own open eagerly Pings so the
-// database file exists on disk from boot — a hibernate route's
-// activator replicates that path from boot — so your open must touch
-// the driver too (a Ping, or a migration) before Serve is called.
+// the resolved invocation first. The original motivating case — an app
+// that opens its own database before building its mux — is better
+// served by Options.Router now, which hands back the *sql.DB Serve
+// opened; Resolve remains for apps that need the resolved paths
+// themselves. If you do open your own handle and blank DBPath, the
+// boot-materialization duty transfers with it: touch the driver (a
+// Ping, or a migration) before Serve, or a hibernate route's activator
+// replicates a file that does not exist.
 func Resolve(opts Options) (Options, error) {
 	return resolveInvocation(opts, os.Args[1:], os.Getenv("STATE_DIRECTORY"))
 }
