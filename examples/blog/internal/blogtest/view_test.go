@@ -83,7 +83,7 @@ func TestMetaLinesFormatDatesInGo(t *testing.T) {
 	if got, want := blog.PublishedLine(when), "Published 2 August 2026"; got != want {
 		t.Errorf("PublishedLine = %q, want %q", got, want)
 	}
-	if got, want := blog.DraftLine(when), "Draft · edited 2 August 2026"; got != want {
+	if got, want := blog.DraftLine(when), "Edited 2 August 2026"; got != want {
 		t.Errorf("DraftLine = %q, want %q", got, want)
 	}
 }

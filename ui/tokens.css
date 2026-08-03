@@ -617,6 +617,14 @@ body {
   color: var(--rst-accent);
 }
 
+/* A status pill inside a row sits above the name link's overlay, like
+   the action pill does. */
+.rst-row .rst-status {
+  flex: none;
+  position: relative;
+  z-index: 1;
+}
+
 /* ── status-pill. The dot is decoration; the label is the state. ──── */
 .rst-status {
   align-items: center;

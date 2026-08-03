@@ -6,7 +6,7 @@
 <div class="rst-list">
 {{template "list-bar" dict "SearchAction" "/admin/posts" "Query" .Query "Placeholder" "Search posts" "Hidden" .Carry "Filter" .Filter}}
 {{if .NoMatch}}<p class="blog-note">{{.NoMatchNote}}</p>
-{{else}}{{range .Rows}}{{template "list-row-action" dict "Href" .Href "Main" .Main "Sub" .Sub "ActionHref" .ActionHref "ActionLabel" .ActionLabel "ActionAria" .ActionAria}}
+{{else}}{{range .Rows}}{{template "list-row-action" dict "Href" .Href "Main" .Main "Sub" .Sub "StatusTone" .StatusTone "StatusLabel" .StatusLabel "ActionHref" .ActionHref "ActionLabel" .ActionLabel "ActionAria" .ActionAria}}
 {{end}}{{end}}
 </div>
 {{if .Pagination.Show}}{{template "pagination" dict "Items" .Pagination.Items}}{{end}}

@@ -24,11 +24,6 @@ go build ./cmd/blog
 Then read at <http://localhost:8080/> and write at
 <http://localhost:8080/admin/posts>.
 
-**Run it from the app root.** Static files are served with
-`http.FileServer(http.Dir("static"))`, which is relative to the working
-directory, so starting the binary from anywhere else 404s both
-stylesheets and every screen renders unstyled (F8).
-
 **No `go generate` step.** `gen/` is committed, exactly as helloworld's
 is, so `go build ./cmd/blog` works on a fresh clone.
 
@@ -105,6 +100,7 @@ offers `Main`, `Sub`, one action pill and a decorative `aria-hidden`
 lead marker. Status goes into `Sub` as prose. It works and it is
 accessible; the row partial wants a `Status` `Tone`/`Label` pair that
 renders `status-pill` in the row's right-hand group.
+*Fixed:* list-row-action grew the StatusTone/StatusLabel pair and this list uses it — the pill carries the state, Sub keeps the date ("Edited 2 August 2026").
 
 **F2 — no form partials, and the focus ring stops at the library's
 edge.** The `field`/`field-textarea` family is deferred, so every form
@@ -150,6 +146,7 @@ package (`internal/blog`); that is the only path, not a preference.
 and Go's mux treats `/` as a prefix, so every unmatched GET lands in the
 index action. Every app needs the `r.URL.Path != "/"` guard, or the
 generator should emit a 404 fallback for it.
+*Fixed:* the generator anchors the root index to GET /{$}, so unmatched GETs fall to the mux's own 404; this app's hand guard is gone from actions/index.GET.go.
 
 **F7 — no auth, because there is none to use.** The `/admin/…` subtree is
 open. A real deployment would put it behind an authenticated session and
@@ -159,6 +156,7 @@ nothing else about the app would change shape.
 **F8 — static serving is relative to the working directory.** The
 scaffolded line is `http.FileServer(http.Dir("static"))`, so the binary
 must be run from the app root or every screen renders unstyled.
+*Fixed:* static/ is embedded (assets.go) and served with http.FileServerFS — the shipped binary carries its stylesheets, wherever it starts. Edits need a rebuild; rastrillo dev watches static/ and does it on save.
 
 **F9 — `go build ./...`, `go vet ./...` and `go test ./...` all fail in a
 rastrillo app.** `actions/` is generator input, not a package Go can

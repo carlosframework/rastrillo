@@ -20,10 +20,10 @@ func TestAdminListShowsDraftsAndPublished(t *testing.T) {
 
 	wantContains(t, body, "A draft")
 	wantContains(t, body, "Live post")
-	// Status rides in the row's Sub as prose: the stock row has no status
-	// slot (friction finding F1).
-	wantContains(t, body, "Draft · edited")
-	wantContains(t, body, "Published ")
+	// Status now rides in the pill.
+	wantContains(t, body, `data-tone="neutral">Draft<`)
+	wantContains(t, body, "Edited")
+	wantContains(t, body, `data-tone="positive">Published<`)
 	// The published row gets a pill; the draft, having no public page, does not.
 	if n := strings.Count(body, `class="rst-row__action"`); n != 1 {
 		t.Errorf("%d action pills, want exactly 1 (the published row)", n)
