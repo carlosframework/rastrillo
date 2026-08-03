@@ -171,8 +171,11 @@ func TestAdminListFilterComposesWithSearchAndPaging(t *testing.T) {
 	}
 	rec := get(t, h, "/admin/posts?q=Note&status=draft")
 	body := rec.Body.String()
-	// Pagination carries both q and status.
-	if !strings.Contains(body, "q=Note") || !strings.Contains(body, "status=draft") {
+	// Pagination carries both q and status, page last — checked on the
+	// page-2 link itself so the filter dropdown's own href (which also
+	// contains "q=Note" and "status=draft", but never "page=") can't
+	// satisfy this assertion by accident.
+	if !strings.Contains(body, `href="/admin/posts?q=Note&amp;status=draft&amp;page=2"`) {
 		t.Errorf("pagination dropped a parameter: %s", body)
 	}
 }

@@ -163,6 +163,19 @@ func TestPaginationCarriesTheQueryAndDisablesNextOnTheLastPage(t *testing.T) {
 	}
 }
 
+// A non-empty status must flow through BuildPagination too, in order
+// after q and before page — the admin list's own filter dropdown href
+// also contains "q=Note" and "status=draft", so an assertion on the
+// full page string couldn't tell the two apart; this one reaches
+// BuildPagination directly.
+func TestPaginationCarriesTheStatusFilterAfterTheQuery(t *testing.T) {
+	got := blog.BuildPagination("/admin/posts", "Note", "draft", 1, blog.PageSize+1)
+	next := got.Items[len(got.Items)-1]
+	if next != (blog.PageItem{Label: "Next", Href: "/admin/posts?q=Note&status=draft&page=2"}) {
+		t.Errorf("Next = %+v", next)
+	}
+}
+
 // A gap needs 71 posts to appear, so the app builds it correctly and
 // never renders it — the library's own fixtures cover that item kind.
 func TestPaginationWindowsWithGapsPastSevenPages(t *testing.T) {
