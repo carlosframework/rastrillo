@@ -746,3 +746,30 @@ func TestFieldTextDescribedByMatchesRenderedIds(t *testing.T) {
 		t.Errorf("error-only describedby wrong: %s", errOnly)
 	}
 }
+
+func TestFieldTextareaMaximalFixture(t *testing.T) {
+	got := render(t, "field-textarea", map[string]any{
+		"Name": "body", "Label": "Body", "Value": "Hello\n\nWorld",
+		"Rows": 18, "Required": true, "Hint": "Plain text.", "Error": "Too long.",
+	})
+	for _, want := range []string{
+		`<label class="rst-field__label" for="body">Body`,
+		`<textarea class="rst-textarea" id="body" name="body" rows="18" required aria-invalid="true" aria-describedby="body-hint body-error">Hello`,
+		`<small class="rst-field__hint" id="body-hint">Plain text.</small>`,
+		`<small class="rst-field__error" id="body-error">Too long.</small>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+func TestFieldTextareaMinimalFixture(t *testing.T) {
+	got := render(t, "field-textarea", map[string]any{"Name": "notes", "Label": "Notes"})
+	if !strings.Contains(got, `<textarea class="rst-textarea" id="notes" name="notes"></textarea>`) {
+		t.Errorf("minimal textarea wrong: %s", got)
+	}
+	if strings.Contains(got, "rows=") {
+		t.Errorf("rows rendered without the key: %s", got)
+	}
+}
