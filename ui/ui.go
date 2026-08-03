@@ -89,6 +89,52 @@
 // JavaScript:
 //
 //	<span class="rst-ftok"><span class="rst-ftok__k">Paid</span><a href="/orders" aria-label="Remove filter Paid">✕</a></span>
+//
+// toggle-block — a bordered card whose head is a switch and whose body
+// reveals only while that switch is on, via :has() — zero JavaScript.
+// The switch is authoritative: a submit handler treats an unchecked
+// switch as off no matter what the (still-POSTed, still-visible-in-the-
+// DOM) revealed fields carry. The reveal is a display convenience, never
+// a second source of truth:
+//
+//	<div class="rst-tblock">
+//	  <label class="rst-tblock__head"><input type="checkbox" name="notify" checked>
+//	    <span class="rst-switch__track" aria-hidden="true"></span>
+//	    <span><span class="rst-tblock__title">Email notifications</span><span class="rst-tblock__desc">Sent for every reply.</span></span>
+//	  </label>
+//	  <div class="rst-tblock__body">…</div>
+//	</div>
+//
+// modal route — a modal is its own URL, not client state. The response
+// renders the page a Close click returns to, wrapped in an inert
+// backdrop (rst-backdrop, marked inert so a keyboard or screen-reader
+// user cannot reach it while the panel is open), then the overlay and
+// panel on top. Closing is a plain link back to that same URL — never
+// JavaScript, so there is nothing to wire up and nothing that can get
+// out of sync with the page underneath:
+//
+//	<div class="rst-backdrop" inert>…the page a Close click returns to…</div>
+//	<div class="rst-modal-overlay">
+//	  <div class="rst-modal-panel">
+//	    <nav><a href="/settings/profile" aria-current="page">Profile</a><a href="/settings/billing">Billing</a></nav>
+//	    <section><a class="rst-modal-close" href="/settings" aria-label="Close settings">✕</a>…</section>
+//	  </div>
+//	</div>
+//
+// help — a bordered "?" icon-link to a help article, opening in a new
+// tab. Its CSS tooltip (rst-tip, driven by the data-tip attribute) is
+// decoration a sighted pointer user sees on hover or focus; it is never
+// the accessible name, so the link carries its own full-sentence
+// aria-label regardless:
+//
+//	<a class="rst-help rst-tip" href="/help/orders" target="_blank" rel="noopener" aria-label="Help: orders" data-tip="About orders">{{icon "help-circle"}}</a>
+//
+// selbox — the selection checkbox a list row wears in select mode. Its
+// label restates the row's own identity rather than a bare "checkbox 3
+// of 12", the same disambiguation list-row-action's ActionAria and
+// row-menu's per-row aria-label already use:
+//
+//	<label class="rst-selbox"><input type="checkbox" aria-label="Select order AB3PX"></label>
 package ui
 
 import (

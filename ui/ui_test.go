@@ -612,6 +612,21 @@ func allPartials() []struct {
 				map[string]any{"Label": "Advanced", "Href": "?tab=advanced"},
 			},
 		}},
+		{"confirm-form", map[string]any{
+			"Action": "/orders/1/refund", "Label": "Refund €10.00", "Danger": true,
+			"Hidden": map[string]any{"csrf": "tok"}, "CancelHref": "/orders/1",
+		}},
+		{"back-nav", map[string]any{"Href": "/orders/1", "Label": "Order AB3PX"}},
+		{"bulk-bar", map[string]any{
+			"DoneHref": "/orders", "DoneLabel": "Done selecting",
+			"Count":        "3 selected",
+			"EscalateHref": "/orders?select=all", "EscalateLabel": "Select all 412 matching",
+			"MenuLabel": "Actions",
+			"Actions": []any{
+				map[string]any{"Value": "export", "Label": "Export"},
+				map[string]any{"Value": "refund", "Label": "Refund…", "Danger": true},
+			},
+		}},
 	}
 }
 
@@ -637,14 +652,15 @@ func TestAllPartialsAreDefined(t *testing.T) {
 		"list-row-action", "status-pill", "empty-state", "pagination",
 		"badge", "meter", "person", "callout", "detail-list",
 		"field", "field-select", "field-textarea", "field-check", "choice-field", "seg-tabs",
+		"confirm-form", "back-nav", "notice", "form-error", "bulk-bar",
 	}
 	for _, name := range want {
 		if tmpl.Lookup(name) == nil {
 			t.Errorf("partial %q is not defined", name)
 		}
 	}
-	if len(want) != 19 {
-		t.Fatalf("the shipped set is 19 partials, this list has %d", len(want))
+	if len(want) != 24 {
+		t.Fatalf("the shipped set is 24 partials, this list has %d", len(want))
 	}
 }
 
@@ -851,6 +867,73 @@ func TestSegTabsMarksCurrent(t *testing.T) {
 	}
 }
 
+// confirm-form's Cancel renders before the submit button visually
+// regardless of source order — .rst-form-actions > a { order: -1 }
+// (tokens.css) does the flip, so a screen-reader/tab-order user still
+// meets the destructive submit last, after Cancel, while a keyboard user
+// tabbing forward hits Cancel first the way it reads on screen.
+func TestConfirmFormShape(t *testing.T) {
+	got := render(t, "confirm-form", fixtureFor(t, "confirm-form"))
+	for _, want := range []string{`method="post"`, `action="/orders/1/refund"`,
+		`<input type="hidden" name="csrf" value="tok">`, "rst-btn--danger",
+		`href="/orders/1"`, ">Cancel</a>"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+	// Cancel is an <a>, never a submit — a GET never mutates.
+	if strings.Contains(got, `type="submit">Cancel`) {
+		t.Errorf("cancel must be a link: %s", got)
+	}
+}
+
+func TestBackNavRendersArrowLink(t *testing.T) {
+	got := render(t, "back-nav", fixtureFor(t, "back-nav"))
+	if !strings.Contains(got, `<p class="rst-back-nav">`) || !strings.Contains(got, `href="/orders/1"`) || !strings.Contains(got, "← Order AB3PX") {
+		t.Errorf("missing back-nav shape: %s", got)
+	}
+}
+
+// notice and form-error are string-data partials — the partial's dot is
+// the message itself, not a dict-built map — so render() is called with
+// a plain string. Both render nothing at all for an empty string, rather
+// than an empty-but-present element: a caller can call {{template
+// "notice" .Flash}} unconditionally, flash message or not.
+func TestNoticeRendersMessageOrNothing(t *testing.T) {
+	if got := render(t, "notice", ""); strings.TrimSpace(got) != "" {
+		t.Errorf("empty notice should render nothing: %q", got)
+	}
+	got := render(t, "notice", "Refund sent.")
+	if !strings.Contains(got, `role="status"`) || !strings.Contains(got, "Refund sent.") {
+		t.Errorf("missing notice text or role: %s", got)
+	}
+}
+
+func TestFormErrorRendersMessageOrNothing(t *testing.T) {
+	if got := render(t, "form-error", ""); strings.TrimSpace(got) != "" {
+		t.Errorf("empty form-error should render nothing: %q", got)
+	}
+	got := render(t, "form-error", "Amount is required.")
+	if !strings.Contains(got, `role="alert"`) || !strings.Contains(got, "Amount is required.") {
+		t.Errorf("missing form-error text or role: %s", got)
+	}
+}
+
+// The actions menu's items are real submit buttons on the surrounding
+// form (name="action", value per item) — not links, not onclick — so
+// bulk operations work with JavaScript off exactly like every other
+// mutation in this library. The close control is icon-only, so its
+// accessible name has to come from somewhere other than visible text.
+func TestBulkBarActionsAreRealSubmits(t *testing.T) {
+	got := render(t, "bulk-bar", fixtureFor(t, "bulk-bar"))
+	if !strings.Contains(got, `<button type="submit" name="action" value="refund" class="rst-danger">`) {
+		t.Errorf("actions must be named submit buttons on the surrounding form: %s", got)
+	}
+	if !strings.Contains(got, `aria-label=`) {
+		t.Errorf("the close control needs an accessible name: %s", got)
+	}
+}
+
 // iconSVG returns one vendored icon's markup as a plain string for
 // building styleguide samples inline. rastrillo.Icon returns
 // template.HTML; string() is safe here because every argument this
@@ -923,6 +1006,59 @@ var styleguideSamples = map[string]string{
     </div>
   </div>
 </form>`,
+	// tblock reuses field-check's exact switch markup (input + a sibling
+	// rst-switch__track) inside its own head, so :has() can key off the
+	// same input:checked selector tokens.css already ships for the
+	// switch. The body is hand-written static HTML — a caller's real
+	// body would be a "field" partial render, but this sample has no
+	// template engine of its own supplying that, so a plain input
+	// stands in for it.
+	"tblock": `<div class="rst-tblock">
+  <label class="rst-tblock__head"><input type="checkbox" name="notify" checked>
+    <span class="rst-switch__track" aria-hidden="true"></span>
+    <span><span class="rst-tblock__title">Email notifications</span><span class="rst-tblock__desc">Sent for every reply to a thread you're in.</span></span>
+  </label>
+  <div class="rst-tblock__body">
+    <div class="rst-field">
+      <label class="rst-field__label" for="notify-freq">Frequency</label>
+      <input class="rst-input" type="text" id="notify-freq" name="notify_freq" value="Daily digest">
+    </div>
+  </div>
+</div>`,
+	// modal route — the backdrop is marked inert (a real HTML attribute,
+	// not a class tokens.css needs to style) so the page behind the
+	// panel is unreachable by keyboard or screen reader while the modal
+	// is open. The nav rail's current item is aria-current, matching the
+	// dropdown and seg-tabs idioms. Closing is the plain rst-modal-close
+	// link back to the page the backdrop already shows.
+	"modal": `<div class="rst-backdrop" inert>
+  <div class="rst-page"><h1>Settings</h1></div>
+</div>
+<div class="rst-modal-overlay">
+  <div class="rst-modal-panel">
+    <nav>
+      <a href="/settings/profile" aria-current="page">Profile</a>
+      <a href="/settings/billing">Billing</a>
+      <a href="/settings/notifications">Notifications</a>
+    </nav>
+    <section>
+      <a class="rst-modal-close" href="/settings" aria-label="Close settings">✕</a>
+      <h2>Profile</h2>
+      <p>Update the name and photo shown across the account.</p>
+    </section>
+  </div>
+</div>`,
+	// help — the CSS tooltip (data-tip, shown via rst-tip::after on
+	// hover/focus) is decoration only; aria-label carries the real
+	// accessible name so a screen reader user gets the full sentence
+	// even though the tooltip itself never reaches the accessibility
+	// tree.
+	"help": `<a class="rst-help rst-tip" href="/help/orders" target="_blank" rel="noopener" aria-label="Help: orders" data-tip="About orders">` + iconSVG("help-circle") + `</a>`,
+	// selbox — the label restates the row's own identity ("order
+	// AB3PX"), the same disambiguation list-row-action's ActionAria and
+	// row-menu's per-row aria-label already use, rather than a bare
+	// "checkbox 3 of 12".
+	"selbox": `<label class="rst-selbox"><input type="checkbox" aria-label="Select order AB3PX"></label>`,
 }
 
 // The samples are static HTML with no template actions, so parsing them
@@ -941,6 +1077,14 @@ func TestStyleguideSamplesRender(t *testing.T) {
 		out := buf.String()
 		if out == "" {
 			t.Errorf("%s: rendered empty", name)
+		}
+		// No sample reaches for a <script>: the modal shell, toggle-block
+		// reveal, and bulk-bar actions menu are all zero-JS by design
+		// (own-URL navigation, :has(), and real submit buttons,
+		// respectively), and this check applies across every sample —
+		// old and new — so a future one cannot quietly opt out.
+		if strings.Contains(out, "<script") {
+			t.Errorf("%s: reaches for <script>; this vocabulary is zero-JS: %s", name, out)
 		}
 		for _, tag := range []string{"div", "details", "section", "a", "span"} {
 			open, closed := countOpenTags(out, tag), strings.Count(out, "</"+tag+">")
@@ -1007,6 +1151,42 @@ func TestIdiomClassesAreStyled(t *testing.T) {
 	} {
 		if !seen[class] {
 			t.Errorf("selector %q was added to tokens.css in the form-layout task but no styleguide sample uses it", class)
+		}
+	}
+
+	// Task 4's class-idiom selectors (toggle-block, modal route, help,
+	// selbox) — the "tblock", "modal", "help", and "selbox" samples above
+	// are their only exercise, the same way box/list-grid/dropdown/ftok
+	// are Task 2's and form-layout is Task 3's. bulk-bar's own classes
+	// (rst-bulkbar*) are excluded here on purpose: bulk-bar is a real
+	// partial, already exercised by allPartials()/TestRenderEverythingSmoke,
+	// and checked directly in TestRoutesFamilyPartialClassesAreStyled below.
+	for _, class := range []string{
+		"rst-tblock", "rst-tblock__head", "rst-tblock__title", "rst-tblock__desc", "rst-tblock__body",
+		"rst-backdrop", "rst-modal-overlay", "rst-modal-panel", "rst-modal-close",
+		"rst-help", "rst-tip", "rst-selbox",
+	} {
+		if !seen[class] {
+			t.Errorf("selector %q was added to tokens.css in the routes-family task but no styleguide sample uses it", class)
+		}
+	}
+}
+
+// Same drift check again, direct rather than sample-driven: the classes
+// this task's partials (confirm-form, back-nav, notice, form-error,
+// bulk-bar) emit themselves, so there is no arbitrary caller-composed
+// body for a styleguide sample to carry them — allPartials() already
+// exercises confirm-form/back-nav/bulk-bar's fixtures, and this pins
+// that every class they can render resolves to a tokens.css selector.
+func TestRoutesFamilyPartialClassesAreStyled(t *testing.T) {
+	css := string(TokensCSS())
+	for _, class := range []string{
+		"rst-btn--ghost", "rst-btn--danger",
+		"rst-back-nav", "rst-notice", "rst-form-error",
+		"rst-bulkbar", "rst-bulkbar__close", "rst-bulkbar__count", "rst-bulkbar__escalate",
+	} {
+		if !strings.Contains(css, "."+class) {
+			t.Errorf("tokens.css has no selector for %q", class)
 		}
 	}
 }
