@@ -1,8 +1,8 @@
 // Command rastrillo is the CARLOS web framework's CLI: rastrillo new
 // scaffolds an app, rastrillo generate runs the filesystem-routing
-// generator. Subcommand dispatch only — everything real lives in this
-// package's other files, one concern per file, per the family's own
-// convention.
+// generator, rastrillo dev runs the watch/rebuild/restart loop.
+// Subcommand dispatch only — everything real lives in this package's
+// other files, one concern per file, per the family's own convention.
 package main
 
 import (
@@ -21,6 +21,8 @@ func main() {
 		err = runNew(os.Args[2:])
 	case "generate":
 		err = runGenerate(os.Args[2:])
+	case "dev":
+		err = runDev(os.Args[2:])
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -39,7 +41,8 @@ func usage() {
 	fmt.Fprint(os.Stderr, `rastrillo — the CARLOS web framework CLI
 
 Usage:
-  rastrillo new <name>       scaffold a new app in ./<name>
-  rastrillo generate [dir]   run the filesystem-routing generator (default: .)
+  rastrillo new <name>                scaffold a new app in ./<name>
+  rastrillo generate [dir]            run the filesystem-routing generator (default: .)
+  rastrillo dev [dir] [-- app args]   watch + regenerate + rebuild + restart (default dir: .)
 `)
 }
