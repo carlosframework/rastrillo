@@ -340,7 +340,7 @@ body {
   box-shadow: var(--rst-shadow);
   display: flex;
   flex-direction: column;
-  inset-inline-start: 0;
+  inset-inline-end: 0;
   margin-block-start: var(--rst-sp-1);
   min-inline-size: 11rem;
   padding: var(--rst-sp-1);
