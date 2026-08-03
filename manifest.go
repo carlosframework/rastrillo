@@ -1,7 +1,3 @@
-// Package rastrillo defines the manifest types that encode resource
-// declarations — the sugar from design doc §9. Manifests are JSON
-// artifacts; the struct tags below define the artifact's stable public
-// interface (evolution only additive).
 package rastrillo
 
 import (
@@ -33,7 +29,11 @@ const (
 	Mergeable StoreKind = "mergeable"
 )
 
-// Resource describes a CRUD interface for a data entity.
+// Resource is one manifest: the §9 sugar a route opts into. Its JSON
+// encoding (the struct tags here and on the types it embeds) is the
+// generator's stable artifact — gen/manifest.json — consumed by any
+// renderer; evolution is additive only. It describes a CRUD interface
+// for a data entity.
 type Resource struct {
 	Name  string    `json:"name" toml:"name"`
 	Route string    `json:"route" toml:"route"`
