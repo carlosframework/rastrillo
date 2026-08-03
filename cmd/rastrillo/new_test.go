@@ -87,11 +87,42 @@ func TestPackageName(t *testing.T) {
 		{"my-blog", "myblog"},
 		{"9lives", "app9lives"},
 		{"--", "app"},
+		// "func" sanitizes to itself (all letters) but is a Go
+		// keyword, so a bare package clause using it won't compile.
+		{"func", "appfunc"},
+		// A leading digit that isn't ASCII: decoding the first rune
+		// properly (not just its first byte) still has to catch it.
+		{"９lives", "app９lives"},
 	}
 	for _, c := range cases {
 		if got := packageName(c.name); got != c.want {
 			t.Errorf("packageName(%q) = %q, want %q", c.name, got, c.want)
 		}
+	}
+}
+
+// Regression pin for the packageName sanitizer wiring: a hyphenated
+// app name must still scaffold a compilable assets.go package clause,
+// while cmd/<name>/main.go keeps importing the app under its real,
+// hyphenated name (the module path, not the sanitized identifier).
+func TestNewSanitizesHyphenatedAppName(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := runNew([]string{"my-blog"}); err != nil {
+		t.Fatalf("runNew: %v", err)
+	}
+	assets, err := os.ReadFile(filepath.Join("my-blog", "assets.go"))
+	if err != nil {
+		t.Fatalf("expected a scaffolded assets.go: %v", err)
+	}
+	if !strings.Contains(string(assets), "package myblog") {
+		t.Errorf("assets.go does not have the sanitized package clause:\n%s", assets)
+	}
+	main, err := os.ReadFile(filepath.Join("my-blog", "cmd", "my-blog", "main.go"))
+	if err != nil {
+		t.Fatalf("expected a scaffolded main.go: %v", err)
+	}
+	if !strings.Contains(string(main), `app "my-blog"`) {
+		t.Errorf("main.go does not import the app under its hyphenated name:\n%s", main)
 	}
 }
 

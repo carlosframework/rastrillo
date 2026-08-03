@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/carlosframework/rastrillo/ui"
 )
@@ -78,6 +80,9 @@ func runNew(args []string) error {
 // hyphens (and other punctuation) are legal, but a package clause
 // needs an identifier. Non-identifier runes are dropped rather than
 // rejected, so every name rastrillo new already accepts keeps working.
+// A leading digit (decoded properly, not just the first byte, so a
+// multi-byte leading digit is still caught) or a bare Go keyword — a
+// package clause can't start with either — earns the same "app" prefix.
 func packageName(name string) string {
 	var b strings.Builder
 	for _, r := range name {
@@ -86,7 +91,8 @@ func packageName(name string) string {
 		}
 	}
 	out := b.String()
-	if out == "" || unicode.IsDigit(rune(out[0])) {
+	first, _ := utf8.DecodeRuneInString(out)
+	if out == "" || unicode.IsDigit(first) || token.IsKeyword(out) {
 		out = "app" + out
 	}
 	return out
