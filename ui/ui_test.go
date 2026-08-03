@@ -702,3 +702,47 @@ func TestDropdownMinimalFixture(t *testing.T) {
 		t.Errorf("summary lost its disclosure chevron: %s", got)
 	}
 }
+
+func TestFieldTextMaximalFixture(t *testing.T) {
+	got := render(t, "field-text", map[string]any{
+		"Name": "title", "Label": "Title", "Value": "Hello", "Type": "text",
+		"Required": true, "Hint": "Shown in the list.", "Error": "Title is required.",
+		"Autocomplete": "off",
+	})
+	for _, want := range []string{
+		`<div class="rst-field">`,
+		`<label class="rst-field__label" for="title">Title`,
+		`<span class="rst-field__required" aria-hidden="true">*</span>`,
+		`<input class="rst-input" id="title" name="title" type="text" value="Hello" autocomplete="off" required aria-invalid="true" aria-describedby="title-hint title-error">`,
+		`<small class="rst-field__hint" id="title-hint">Shown in the list.</small>`,
+		`<small class="rst-field__error" id="title-error">Title is required.</small>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+func TestFieldTextMinimalFixture(t *testing.T) {
+	got := render(t, "field-text", map[string]any{"Name": "q", "Label": "Query"})
+	if !strings.Contains(got, `<input class="rst-input" id="q" name="q" type="text">`) {
+		t.Errorf("minimal input wrong: %s", got)
+	}
+	for _, absent := range []string{"aria-describedby", "aria-invalid", "required", "value=", "rst-field__hint", "rst-field__error"} {
+		if strings.Contains(got, absent) {
+			t.Errorf("%q rendered without its key: %s", absent, got)
+		}
+	}
+}
+
+// aria-describedby lists only ids that exist: hint alone, error alone.
+func TestFieldTextDescribedByMatchesRenderedIds(t *testing.T) {
+	hintOnly := render(t, "field-text", map[string]any{"Name": "a", "Label": "A", "Hint": "h"})
+	if !strings.Contains(hintOnly, `aria-describedby="a-hint"`) {
+		t.Errorf("hint-only describedby wrong: %s", hintOnly)
+	}
+	errOnly := render(t, "field-text", map[string]any{"Name": "a", "Label": "A", "Error": "e"})
+	if !strings.Contains(errOnly, `aria-describedby="a-error"`) {
+		t.Errorf("error-only describedby wrong: %s", errOnly)
+	}
+}

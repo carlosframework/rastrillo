@@ -366,6 +366,43 @@ body {
   font-weight: 600;
 }
 
+/* ── field family ─────────────────────────────────────────────────── */
+.rst-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rst-sp-1);
+}
+.rst-field__label {
+  color: var(--rst-text-muted);
+  font-size: var(--rst-fs-sm);
+  font-weight: 600;
+}
+.rst-field__required {
+  color: var(--rst-tone-negative-fg);
+}
+.rst-input,
+.rst-textarea {
+  background: var(--rst-surface);
+  border: 1px solid var(--rst-line-strong);
+  border-radius: var(--rst-radius-sm);
+  color: var(--rst-text);
+  font: inherit;
+  padding: var(--rst-sp-2) var(--rst-sp-3);
+}
+.rst-textarea {
+  line-height: 1.6;
+  resize: vertical;
+}
+.rst-field__hint {
+  color: var(--rst-text-muted);
+  font-size: var(--rst-fs-sm);
+}
+.rst-field__error {
+  color: var(--rst-tone-negative-fg);
+  font-size: var(--rst-fs-sm);
+  font-weight: 600;
+}
+
 /* ── page-header ──────────────────────────────────────────────────── */
 .rst-page-header {
   align-items: baseline;
