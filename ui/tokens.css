@@ -618,6 +618,63 @@ body {
   padding-inline: var(--rst-sp-1);
 }
 
+/* badge — uppercase bordered chip; tones reuse the pill tone pairs. */
+.rst-badge {
+  border: 1px solid var(--rst-line);
+  border-radius: var(--rst-radius-sm);
+  color: var(--rst-text-muted);
+  display: inline-block;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.05rem 0.4rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.rst-badge--positive { background: var(--rst-tone-positive-bg); border-color: var(--rst-tone-positive-fg); color: var(--rst-tone-positive-fg); }
+.rst-badge--warning { background: var(--rst-tone-warning-bg); border-color: var(--rst-tone-warning-fg); color: var(--rst-tone-warning-fg); }
+.rst-badge--negative { background: var(--rst-tone-negative-bg); border-color: var(--rst-tone-negative-fg); color: var(--rst-tone-negative-fg); }
+.rst-badge--neutral { background: var(--rst-tone-neutral-bg); border-color: var(--rst-tone-neutral-fg); color: var(--rst-tone-neutral-fg); }
+
+/* meter — 4px capacity bar; the number rides beside it as text. */
+.rst-meter { align-items: center; color: var(--rst-text-muted); display: inline-flex; font-size: var(--rst-fs-xs); gap: var(--rst-sp-2); }
+.rst-meter__bar { background: var(--rst-accent-soft); border-radius: 2px; flex: 1; height: 4px; min-width: 34px; overflow: hidden; }
+.rst-meter__bar i { background: var(--rst-accent); border-radius: 2px; display: block; height: 100%; width: var(--rst-meter-fill, 0%); }
+.rst-meter__num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* person — avatar + name + email; avatar is decoration, text is identity. */
+.rst-person { align-items: center; color: inherit; display: inline-flex; gap: 0.7rem; min-width: 0; text-decoration: none; }
+.rst-person__av { align-items: center; background: var(--rst-accent); border-radius: 50%; color: var(--rst-on-accent); display: flex; flex: none; font-size: 0.6875rem; font-weight: 600; height: 28px; justify-content: center; width: 28px; }
+.rst-person__av--empty { background: transparent; border: 1px dashed var(--rst-line-strong); color: transparent; }
+.rst-person__meta { min-width: 0; }
+.rst-person__name { display: block; font-weight: 550; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rst-person__email { color: var(--rst-text-muted); display: block; font-size: var(--rst-fs-xs); line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rst-person:hover .rst-person__name { color: var(--rst-accent); }
+.rst-person--lg .rst-person__av { font-size: 1.0625rem; height: 46px; width: 46px; }
+
+/* callout — the one alert vocabulary; icon sized to the first text line. */
+.rst-callout { align-items: flex-start; background: var(--rst-surface-2); border: 1px solid var(--rst-line-strong); border-radius: var(--rst-radius); display: flex; gap: 0.6rem; margin: var(--rst-sp-4) 0; padding: 0.85rem 1rem; }
+.rst-callout__ic { align-items: center; color: var(--rst-accent); display: inline-flex; flex: none; height: 1.5rem; justify-content: center; width: 1.25rem; }
+.rst-callout__ic svg, .rst-callout__ic .icon { display: block; height: 1.25rem; width: 1.25rem; }
+.rst-callout__body { line-height: 1.5; min-width: 0; }
+.rst-callout__body > strong { display: block; font-weight: 600; }
+.rst-callout__body > p { color: var(--rst-text-muted); margin: 0.15rem 0 0; }
+.rst-callout__body > p:only-child { color: inherit; margin: 0; }
+.rst-callout__body > ul { color: var(--rst-text-muted); margin: 0.15rem 0 0; padding-left: 1.1rem; }
+.rst-callout[data-tone="positive"] { background: var(--rst-tone-positive-bg); border-color: var(--rst-tone-positive-fg); }
+.rst-callout[data-tone="positive"] > .rst-callout__ic { color: var(--rst-tone-positive-fg); }
+.rst-callout[data-tone="warning"] { background: var(--rst-tone-warning-bg); border-color: var(--rst-tone-warning-fg); }
+.rst-callout[data-tone="warning"] > .rst-callout__ic { color: var(--rst-tone-warning-fg); }
+.rst-callout[data-tone="negative"] { background: var(--rst-tone-negative-bg); border-color: var(--rst-tone-negative-fg); }
+.rst-callout[data-tone="negative"] > .rst-callout__ic { color: var(--rst-tone-negative-fg); }
+
+/* detail-list — hairline label/value rows; bare inside a box, framed alone. */
+.rst-detail-list { display: grid; grid-template-columns: max-content 1fr; margin: var(--rst-sp-4) 0; }
+.rst-detail-list dt { border-top: 1px solid var(--rst-line); color: var(--rst-text-muted); padding: 0.6rem 0; }
+.rst-detail-list dd { border-top: 1px solid var(--rst-line); font-weight: 500; margin: 0; padding: 0.6rem 0 0.6rem 1.5rem; text-align: right; }
+.rst-detail-list dt:first-of-type, .rst-detail-list dd:first-of-type { border-top: 0; }
+
 /* ── Narrow screens ───────────────────────────────────────────────── */
 @media (max-width: 34rem) {
   .rst-lbar > .rst-search {

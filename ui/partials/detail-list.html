@@ -1,0 +1,7 @@
+{{/* detail-list — label/value rows in a hairline card: the Show
+     screen's settings block. Never restate a number a stat tile
+     already shows — this list holds only what doesn't earn a tile.
+     Values needing markup hand-write a <dl class="rst-detail-list">.
+     Keys:
+       Items  list, required — each {Label, Value} strings */}}
+{{define "detail-list"}}<dl class="rst-detail-list">{{range .Items}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}</dl>{{end}}

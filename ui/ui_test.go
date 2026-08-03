@@ -466,6 +466,54 @@ func TestPaginationWithNoItems(t *testing.T) {
 	}
 }
 
+func TestMeterClampsAndAlwaysShowsTheNumber(t *testing.T) {
+	over := render(t, "meter", map[string]any{"Percent": 140, "Text": "7/5"})
+	if !strings.Contains(over, "--rst-meter-fill: 100%") {
+		t.Errorf("percent not clamped high: %s", over)
+	}
+	under := render(t, "meter", map[string]any{"Percent": -3, "Text": "0/5"})
+	if !strings.Contains(under, "--rst-meter-fill: 0%") {
+		t.Errorf("percent not clamped low: %s", under)
+	}
+	if !strings.Contains(over, `<span class="rst-meter__num">7/5</span>`) {
+		t.Errorf("the fraction text is the accessible value and must render: %s", over)
+	}
+}
+
+func TestCalloutTones(t *testing.T) {
+	for tone, iconFrag := range map[string]string{
+		"info": "M12 16v-4", "positive": "m9 12 2 2 4-4",
+		"warning": "M12 9v4", "negative": "m15 9-6 6",
+	} {
+		got := render(t, "callout", map[string]any{"Tone": tone, "Body": "b"})
+		if !strings.Contains(got, `data-tone="`+tone+`"`) || !strings.Contains(got, iconFrag) {
+			t.Errorf("tone %s: wrong attribute or icon: %s", tone, got)
+		}
+	}
+	plain := render(t, "callout", map[string]any{"Body": "b"})
+	if !strings.Contains(plain, `data-tone="info"`) {
+		t.Errorf("default tone is info: %s", plain)
+	}
+	if strings.Contains(plain, `role="alert"`) {
+		t.Errorf("role=alert must be opt-in: %s", plain)
+	}
+	alert := render(t, "callout", map[string]any{"Body": "b", "Alert": true})
+	if !strings.Contains(alert, `role="alert"`) {
+		t.Errorf("Alert did not add role=alert: %s", alert)
+	}
+}
+
+func TestPersonAvatarIsDecorationOnly(t *testing.T) {
+	got := render(t, "person", fixtureFor(t, "person"))
+	if !strings.Contains(got, `aria-hidden="true"`) {
+		t.Errorf("avatar must be aria-hidden: %s", got)
+	}
+	empty := render(t, "person", map[string]any{"Href": "/x", "Name": "N"})
+	if !strings.Contains(empty, "rst-person__av--empty") {
+		t.Errorf("missing Initial renders the empty-avatar state: %s", empty)
+	}
+}
+
 // allPartials is the shipped set, with a fixture exercising every
 // optional field at once. Every href is deliberately relative: the
 // self-containment check below bans absolute URLs outright, so anything
@@ -514,6 +562,21 @@ func allPartials() []struct {
 				map[string]any{"Label": "9", "Href": "/posts?page=9"},
 			},
 		}},
+		{"badge", map[string]any{"Label": "Draft"}},
+		{"meter", map[string]any{"Percent": 82, "Text": "412/500"}},
+		{"person", map[string]any{
+			"Href": "/people/1", "Name": "Grace Hopper", "Email": "grace@example.com", "Initial": "G",
+		}},
+		{"callout", map[string]any{
+			"Tone": "warning", "Title": "Connect payments to start selling",
+			"Body": "Your event is live but can't take payment yet.",
+		}},
+		{"detail-list", map[string]any{
+			"Items": []any{
+				map[string]any{"Label": "Audience", "Value": "Members"},
+				map[string]any{"Label": "Main page", "Value": "No"},
+			},
+		}},
 	}
 }
 
@@ -531,20 +594,21 @@ func fixtureFor(t *testing.T, name string) map[string]any {
 	return nil
 }
 
-// All eight partials are present and named exactly as documented.
-func TestAllEightPartialsAreDefined(t *testing.T) {
+// All partials are present and named exactly as documented.
+func TestAllPartialsAreDefined(t *testing.T) {
 	tmpl := parseAll(t)
 	want := []string{
 		"page-header", "list-bar", "list-bar-search", "list-search-submit",
 		"list-row-action", "status-pill", "empty-state", "pagination",
+		"badge", "meter", "person", "callout", "detail-list",
 	}
 	for _, name := range want {
 		if tmpl.Lookup(name) == nil {
 			t.Errorf("partial %q is not defined", name)
 		}
 	}
-	if len(want) != 8 {
-		t.Fatalf("the shipped set is 8 partials, this list has %d", len(want))
+	if len(want) != 13 {
+		t.Fatalf("the shipped set is 13 partials, this list has %d", len(want))
 	}
 }
 
@@ -657,5 +721,22 @@ func TestDisabledPaginationChipIsStyled(t *testing.T) {
 	}
 	if strings.Contains(css, `.rst-pagination [aria-disabled=`) {
 		t.Errorf("tokens.css still carries the dead aria-disabled pagination rule no partial emits")
+	}
+}
+
+// Same drift check as TestDisabledPaginationChipIsStyled, extended to the
+// classes the five display partials added in this batch emit: every class
+// a partial can produce must have a styled selector in tokens.css, so
+// nothing new ships unstyled.
+func TestDisplayPartialClassesAreStyled(t *testing.T) {
+	css := string(TokensCSS())
+	for _, class := range []string{
+		"rst-badge", "rst-badge--warning", "rst-meter", "rst-meter__bar", "rst-meter__num",
+		"rst-person", "rst-person__av", "rst-callout", "rst-callout__ic", "rst-callout__body",
+		"rst-detail-list",
+	} {
+		if !strings.Contains(css, "."+class) {
+			t.Errorf("tokens.css has no selector for %q", class)
+		}
 	}
 }
