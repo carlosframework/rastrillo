@@ -204,14 +204,14 @@ func parseDevArgs(args []string) (dir string, appArgs []string, help bool, err e
 		return "", nil, false, fmt.Errorf("unexpected flag %q before app directory — pass app flags after \"--\" (e.g. rastrillo dev -- %s)", args[0], args[0])
 	}
 	if len(args) > 1 {
-		return "", nil, false, fmt.Errorf("unexpected argument %q after app directory — pass app flags after \"--\" (e.g. rastrillo dev . -- %s)", args[1], args[1])
+		return "", nil, false, fmt.Errorf("unexpected argument %q after app directory — pass app flags after \"--\" (e.g. rastrillo dev %s -- %s)", args[1], args[0], args[1])
 	}
 	return args[0], appArgs, false, nil
 }
 
 // devUsage prints `rastrillo dev`'s own usage to stdout, for -h/-help/
 // --help — a help request is not an error, so it must not go to stderr
-// or set a non-zero exit code.
+// or set a non-zero exit code. Requested help is the command's output, so it goes to stdout — unlike main.go's usage(), which prints to stderr on the error path.
 func devUsage() {
 	fmt.Print(`usage: rastrillo dev [dir] [-- app args...]
 

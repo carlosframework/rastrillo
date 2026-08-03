@@ -107,6 +107,12 @@ func TestParseDevArgs(t *testing.T) {
 			wantApp: []string{"-addr", ":9000"},
 		},
 		{
+			name:    "dash h after separator passed to app",
+			args:    []string{".", "--", "-h"},
+			wantDir: ".",
+			wantApp: []string{"-h"},
+		},
+		{
 			name:       "leading dash rejected",
 			args:       []string{"-addr", ":9000"},
 			wantErrSub: `pass app flags after "--"`,
@@ -116,8 +122,8 @@ func TestParseDevArgs(t *testing.T) {
 		{name: "help --help", args: []string{"--help"}, wantHelp: true},
 		{
 			name:       "extra arg after dir rejected",
-			args:       []string{".", "-addr", ":9000"},
-			wantErrSub: `unexpected argument "-addr" after app directory`,
+			args:       []string{"myapp", "-addr", ":9000"},
+			wantErrSub: `rastrillo dev myapp --`,
 		},
 	}
 
