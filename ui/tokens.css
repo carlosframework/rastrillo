@@ -1,5 +1,7 @@
-/* rastrillo/ui — design tokens and the component classes the eight
-   shipped partials use.
+/* rastrillo/ui — design tokens and the component classes the shipped
+   partials use (see ui_test.go's TestAllPartialsAreDefined for the
+   current, authoritative list — deliberately not counted here, so this
+   comment cannot go stale as the set grows).
 
    rastrillo new writes this file once into your app's static/ directory.
    From then on it is yours: edit it, replace it, delete rules you do not

@@ -186,6 +186,35 @@ func TestBuildHandlerNoLocalesNeverErrors(t *testing.T) {
 	}
 }
 
+// TestBuildHandlerOverridesFrameworkBaseCatalog covers the layering order
+// buildHandler now wires (Step 2): an app catalog entry for a
+// rastrillo.ui.* key must win over the framework base layer BaseCatalog()
+// supplies, through the same public request path an action uses —
+// T(r, key) — not through Locales.T directly.
+func TestBuildHandlerOverridesFrameworkBaseCatalog(t *testing.T) {
+	fsys := fstest.MapFS{
+		"locales/en.toml": &fstest.MapFile{Data: []byte(`rastrillo.ui.cancel = "Never mind"` + "\n")},
+	}
+	var cap captured
+	mux := http.NewServeMux()
+	mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
+		cap.translated = T(r, "rastrillo.ui.cancel")
+		fmt.Fprint(w, "hi")
+	})
+	h, err := buildHandler(Options{
+		Mux:      mux,
+		Locales:  []string{"en"},
+		LocaleFS: fsys,
+	})
+	if err != nil {
+		t.Fatalf("buildHandler: %v", err)
+	}
+	get(h, "/hello", "")
+	if cap.translated != "Never mind" {
+		t.Errorf("app catalog override lost to the framework base layer: got %q, want %q", cap.translated, "Never mind")
+	}
+}
+
 // TestBuildHandlerPropagatesLocaleErrors covers a malformed catalog file:
 // buildHandler must surface NewLocales' error, and Serve's caller must
 // be able to trust that message is not double-prefixed. NewLocales

@@ -11,8 +11,14 @@
        Action, Label  strings, required
        Danger    bool, optional — the darkened danger fill
        Hidden    map, optional — hidden inputs, key-ordered
-       CancelHref, CancelLabel  strings, optional — label default "Cancel" */}}
-{{define "confirm-form"}}<form class="rst-form-actions" method="post" action="{{.Action}}">{{range $k, $v := .Hidden}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}{{if .CancelHref}}<a class="rst-btn rst-btn--ghost" href="{{.CancelHref}}">{{or .CancelLabel "Cancel"}}</a>{{end}}<button type="submit" class="rst-btn{{if .Danger}} rst-btn--danger{{else}} rst-btn--primary{{end}}">{{.Label}}</button></form>{{end}}
+       CancelHref, CancelLabel  strings, optional — label default resolved
+              through T ("rastrillo.ui.cancel" — "Cancel" in the framework
+              base catalog; see Funcs/FuncsWith). An app passing its own
+              CancelLabel always wins over T. The Cancel <a> stays first
+              in the DOM, before the submit button — see the doc comment
+              above: that order is load-bearing for tab order, not
+              incidental to how the default renders. */}}
+{{define "confirm-form"}}<form class="rst-form-actions" method="post" action="{{.Action}}">{{range $k, $v := .Hidden}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}{{if .CancelHref}}<a class="rst-btn rst-btn--ghost" href="{{.CancelHref}}">{{if .CancelLabel}}{{.CancelLabel}}{{else}}{{T "rastrillo.ui.cancel"}}{{end}}</a>{{end}}<button type="submit" class="rst-btn{{if .Danger}} rst-btn--danger{{else}} rst-btn--primary{{end}}">{{.Label}}</button></form>{{end}}
 
 {{/* back-nav — the ← return link above a confirm or detail page. */}}
 {{define "back-nav"}}<p class="rst-back-nav"><a href="{{.Href}}">← {{.Label}}</a></p>{{end}}

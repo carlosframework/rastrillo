@@ -65,15 +65,48 @@ func TestListWithNoItemsIsEmptyNotNil(t *testing.T) {
 	}
 }
 
-func TestFuncsRegistersDictListAndIcon(t *testing.T) {
+func TestFuncsRegistersDictListIconAndT(t *testing.T) {
 	f := Funcs()
-	for _, name := range []string{"dict", "list", "icon"} {
+	for _, name := range []string{"dict", "list", "icon", "T"} {
 		if _, ok := f[name]; !ok {
 			t.Errorf("Funcs() is missing %q", name)
 		}
 	}
-	if len(f) != 3 {
-		t.Errorf("Funcs() has %d entries, want exactly 3", len(f))
+	if len(f) != 4 {
+		t.Errorf("Funcs() has %d entries, want exactly 4", len(f))
+	}
+}
+
+// defaultT (Funcs' T) resolves the framework base catalog and falls back
+// to the key itself for anything the base catalog does not carry —
+// exercised directly, since the partials only ever call it for keys the
+// catalog does define.
+func TestDefaultTResolvesBaseCatalogAndFallsBackToKey(t *testing.T) {
+	if got := defaultT("rastrillo.ui.cancel"); got != "Cancel" {
+		t.Errorf("defaultT(%q) = %q, want %q", "rastrillo.ui.cancel", got, "Cancel")
+	}
+	if got := defaultT("no.such.key"); got != "no.such.key" {
+		t.Errorf("defaultT of a missing key = %q, want the key verbatim", got)
+	}
+}
+
+// FuncsWith replaces only the T entry — dict/list/icon are unchanged.
+func TestFuncsWithReplacesOnlyT(t *testing.T) {
+	f := FuncsWith(func(key string, _ ...any) string { return "X-" + key })
+	for _, name := range []string{"dict", "list", "icon", "T"} {
+		if _, ok := f[name]; !ok {
+			t.Errorf("FuncsWith(...) is missing %q", name)
+		}
+	}
+	if len(f) != 4 {
+		t.Errorf("FuncsWith(...) has %d entries, want exactly 4", len(f))
+	}
+	tFunc, ok := f["T"].(func(string, ...any) string)
+	if !ok {
+		t.Fatalf("T entry is %T, want func(string, ...any) string", f["T"])
+	}
+	if got := tFunc("rastrillo.ui.cancel"); got != "X-rastrillo.ui.cancel" {
+		t.Errorf("rebound T = %q, want %q", got, "X-rastrillo.ui.cancel")
 	}
 }
 

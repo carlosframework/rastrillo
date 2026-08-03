@@ -89,6 +89,129 @@ func TestBothThemesDeclareEveryColourToken(t *testing.T) {
 	}
 }
 
+// reducedMotionAllowlist names selectors that carry a transition/animation
+// with no matching disable under @media (prefers-reduced-motion: reduce),
+// found pre-existing at the time this gate was added. Task 5 only adds
+// the gate; it does not silently fix CSS it did not write. Empty today —
+// every transition tokens.css declares (rst-caret, rst-switch__track and
+// its ::after, rst-tip::after) already has a reduce-block "transition:
+// none" counterpart, so nothing needs listing. If a future change adds a
+// transition without one, this test fails; add the selector here only
+// with a comment explaining why it is deliberately left un-disabled, not
+// as a way to silence the failure.
+var reducedMotionAllowlist = map[string]bool{}
+
+// braceMatchEnd returns the index of the '}' matching the '{' implicitly
+// opened at css[start-1] (i.e. depth starts at 1) — tokens.css nests at
+// most one level (a media query wrapping plain rules), and no selector or
+// value in this file contains a literal brace, so simple depth counting
+// is exact here.
+func braceMatchEnd(css string, start int) int {
+	depth := 1
+	for j := start; j < len(css); j++ {
+		switch css[j] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return j
+			}
+		}
+	}
+	return len(css)
+}
+
+// reducedMotionBlocks returns the raw contents of every
+// @media (prefers-reduced-motion: reduce) { ... } block in css, and rest
+// = css with those blocks (header, braces and all) removed — so a
+// transition-selector search over rest never mistakes a reduce block's
+// own "transition: none" for an active, undisabled transition.
+func reducedMotionBlocks(css string) (blocks []string, rest string) {
+	const header = "@media (prefers-reduced-motion: reduce) {"
+	var b strings.Builder
+	last, idx := 0, 0
+	for {
+		i := strings.Index(css[idx:], header)
+		if i < 0 {
+			break
+		}
+		blockStart := idx + i
+		contentStart := blockStart + len(header)
+		end := braceMatchEnd(css, contentStart)
+		blocks = append(blocks, css[contentStart:end])
+		b.WriteString(css[last:blockStart])
+		last = end + 1
+		idx = end + 1
+	}
+	b.WriteString(css[last:])
+	return blocks, b.String()
+}
+
+// leafRule is one selector plus its (brace-matched, non-nested)
+// declaration body.
+type leafRule struct{ selector, body string }
+
+// leafRules extracts every innermost selector{...} rule in css — this
+// naturally includes rules nested inside an @media block (matched before
+// the wrapping @media's own, still-open brace), since none of them nest
+// further themselves.
+var leafRulePattern = regexp.MustCompile(`([^{}]+)\{([^{}]*)\}`)
+
+func leafRules(css string) []leafRule {
+	var out []leafRule
+	for _, m := range leafRulePattern.FindAllStringSubmatch(css, -1) {
+		out = append(out, leafRule{selector: strings.TrimSpace(m[1]), body: m[2]})
+	}
+	return out
+}
+
+// motionPropertyPattern finds a transition/animation declaration and
+// captures its value, so "transition: none" (the disable declaration
+// itself) can be told apart from an actual animated property.
+var motionPropertyPattern = regexp.MustCompile(`(?:^|;)\s*(transition|animation)\s*:\s*([^;]+)`)
+
+// TestReducedMotionDisablesEveryTransition is the motion gate (task 5):
+// every selector that declares a real transition or animation outside a
+// prefers-reduced-motion block must have that same selector text appear
+// again inside one — tokens.css's way of disabling it for a user who has
+// asked the OS to reduce motion. This is a textual, not semantic, check
+// (substring containment of the selector string), matching how
+// tokens.css actually restates selectors verbatim in its reduce blocks
+// today; see reducedMotionAllowlist for the escape hatch if that ever
+// stops being true for a legitimate reason.
+func TestReducedMotionDisablesEveryTransition(t *testing.T) {
+	css := string(TokensCSS())
+	reduceBlocks, rest := reducedMotionBlocks(css)
+	if len(reduceBlocks) == 0 {
+		t.Fatal("tokens.css declares no @media (prefers-reduced-motion: reduce) block at all")
+	}
+	joinedReduce := strings.Join(reduceBlocks, "\n")
+
+	tested := 0
+	for _, rule := range leafRules(rest) {
+		m := motionPropertyPattern.FindStringSubmatch(rule.body)
+		if m == nil {
+			continue
+		}
+		if strings.TrimSpace(m[2]) == "none" {
+			// Already disabled unconditionally; nothing to gate.
+			continue
+		}
+		tested++
+		if reducedMotionAllowlist[rule.selector] {
+			continue
+		}
+		if !strings.Contains(joinedReduce, rule.selector) {
+			t.Errorf("selector %q declares %s: %s with no matching disable under prefers-reduced-motion: reduce (add one, or add the selector to reducedMotionAllowlist with a reason)",
+				rule.selector, m[1], strings.TrimSpace(m[2]))
+		}
+	}
+	if tested == 0 {
+		t.Fatal("found no transition/animation declarations to check outside reduce blocks — the parser likely broke, not that tokens.css lost every transition")
+	}
+}
+
 func TestStatusPillRendersLabelAndTone(t *testing.T) {
 	got := render(t, "status-pill", map[string]any{"Tone": "positive", "Label": "Published"})
 	if !strings.Contains(got, `data-tone="positive"`) {
@@ -642,6 +765,46 @@ func fixtureFor(t *testing.T, name string) map[string]any {
 	}
 	t.Fatalf("no fixture defined for partial %q", name)
 	return nil
+}
+
+// T threading (task 5, §10): a partial's hardcoded-English default now
+// resolves through T, which Funcs binds to the framework base catalog —
+// and FuncsWith lets an app rebind every one of those defaults at once,
+// e.g. to a request-scoped rastrillo.T lookup, without touching the
+// partials themselves.
+func TestUIDefaultsResolveAndRebind(t *testing.T) {
+	got := render(t, "pagination", map[string]any{})
+	if !strings.Contains(got, `aria-label="Pagination"`) {
+		t.Errorf("default label lost: %s", got)
+	}
+	// FuncsWith rebinds every default.
+	tmpl := template.Must(template.New("").Funcs(FuncsWith(func(key string, _ ...any) string {
+		return "X-" + key
+	})).ParseFS(Templates(), "*.html"))
+	var buf strings.Builder
+	if err := tmpl.ExecuteTemplate(&buf, "pagination", map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `aria-label="X-rastrillo.ui.pagination"`) {
+		t.Errorf("FuncsWith did not rebind T: %s", buf.String())
+	}
+}
+
+// A caller-supplied value always wins over T's default — the T threading
+// must never override an explicit Label/CancelLabel.
+func TestUIDefaultsYieldToExplicitValues(t *testing.T) {
+	if got := render(t, "pagination", map[string]any{"Label": "Paginación"}); !strings.Contains(got, `aria-label="Paginación"`) {
+		t.Errorf("explicit Label lost to T's default: %s", got)
+	}
+	if got := render(t, "list-search-submit", map[string]any{"Label": "Buscar"}); !strings.Contains(got, ">Buscar<") {
+		t.Errorf("explicit Label lost to T's default: %s", got)
+	}
+	got := render(t, "confirm-form", map[string]any{
+		"Action": "/x", "Label": "Delete", "CancelHref": "/x", "CancelLabel": "Never mind",
+	})
+	if !strings.Contains(got, ">Never mind</a>") {
+		t.Errorf("explicit CancelLabel lost to T's default: %s", got)
+	}
 }
 
 // All partials are present and named exactly as documented.

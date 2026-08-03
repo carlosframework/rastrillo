@@ -12,11 +12,13 @@
 //	        ParseFS(ui.Templates(), "*.html"))
 //	tmpl = template.Must(tmpl.ParseFS(appTemplateFS, "templates/*.html"))
 //
-// The eight partials are page-header, list-bar, list-bar-search,
-// list-search-submit, list-row-action, status-pill, empty-state and
-// pagination. Each takes exactly one data value; build it inline with
-// dict (see Funcs). Each partial's own file carries its data contract in
-// a template comment above the {{define}}.
+// The partial set spans list screens plus the display, form and route
+// families — see ui_test.go's TestAllPartialsAreDefined for the current,
+// authoritative name list and count; this comment intentionally does not
+// repeat a number that would go stale the next time one lands. Each
+// partial takes exactly one data value; build it inline with dict (see
+// Funcs). Each partial's own file carries its data contract in a
+// template comment above the {{define}}.
 //
 // Two container classes the partials assume but do not emit, because
 // they belong to the app's own page markup:

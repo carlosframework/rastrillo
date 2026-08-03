@@ -6,11 +6,13 @@
      events is broken for a keyboard user with JavaScript disabled.
 
      Keys:
-       Label  string, optional — the button's text, default "Search".
-              This package wires no localization catalog, so an app with
-              one passes its own string. list-bar-search hands its whole
-              data value through, so setting Label there sets it here. */}}
-{{define "list-search-submit"}}<button class="rst-sr-only" type="submit">{{if .Label}}{{.Label}}{{else}}Search{{end}}</button>{{end}}
+       Label  string, optional — the button's text, default resolved
+              through T ("rastrillo.ui.search_submit" — "Search" in the
+              framework base catalog; see Funcs/FuncsWith). An app
+              passing its own Label always wins over T.
+              list-bar-search hands its whole data value through, so
+              setting Label there sets it here. */}}
+{{define "list-search-submit"}}<button class="rst-sr-only" type="submit">{{if .Label}}{{.Label}}{{else}}{{T "rastrillo.ui.search_submit"}}{{end}}</button>{{end}}
 
 {{/* list-bar-search — the search form: a magnifying glass, one
      <input type="search">, any hidden pairs the list needs carried

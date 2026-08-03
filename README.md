@@ -68,9 +68,11 @@ rather than to cover the full design. **Built:**
   lookup falls back through the requested locale's catalog, the default
   locale's catalog, the framework's base catalog, and finally the key
   itself — a missing translation stays visible on the page, never blank.
-  The framework base catalog layer is empty in v1 (it stays empty until
-  the component library ships its base English catalog), so today that
-  fallback step is a no-op. `rastrillo generate --check [--default-locale
+  The framework base catalog (`rastrillo.BaseCatalog()`, wired into every
+  `Serve`d app's `Locales` automatically) carries `rastrillo/ui`'s own
+  `rastrillo.ui.*` strings, so a single-locale app gets correctly-worded
+  built-in components without writing a catalog of its own; an app
+  catalog entry for the same key still wins. `rastrillo generate --check [--default-locale
   <code>]` fails loudly when a non-default catalog is missing keys the
   default has (§10's "silent fallback while iterating, loud failure
   before ship"); that gate runs under `--check` only — plain `rastrillo
@@ -86,6 +88,23 @@ rather than to cover the full design. **Built:**
   `ServeMux` trailing-slash redirect issued under a locale prefix
   currently emits the unprefixed path, dropping the locale on that one
   redirect (known limitation).
+- **`rastrillo/ui`** — the component/UI vocabulary (design doc's List
+  screens plus the display, form, and route families): badges, meters,
+  person cells, callouts, fields, choice cards, toggle blocks, seg-tabs,
+  confirm forms, bulk select, modal shells, and the rest of the List
+  screen set — with framework strings resolved through the §10 locale
+  chain. An app registers `ui.Funcs()` (`dict`, `list`, `icon`, `T`) on
+  its own template tree and `ParseFS`s `ui.Templates()` alongside its own
+  templates; `ui.TokensCSS()` is the design-token stylesheet
+  `rastrillo new` writes once into a new app's `static/` directory, app-
+  owned from then on. `T` resolves a partial's own hardcoded-English
+  default (e.g. `pagination`'s "Pagination", `confirm-form`'s "Cancel")
+  through the framework base catalog — a caller-supplied value always
+  wins over it — and `ui.FuncsWith` lets an app rebind `T` to a
+  request-scoped `rastrillo.T` lookup so those defaults resolve in the
+  request's locale instead. See `ui`'s package doc for the full class
+  idiom vocabulary (list grid, dropdown, filter tokens, help tooltip,
+  selection checkbox) that isn't a Go template partial.
 - **`examples/helloworld`** — a real scaffolded app, checked in, proven
   to ship/promote/serve through the actual `carlos` binary — see
   [`hack/local-deploy-demo.sh`](hack/local-deploy-demo.sh).
@@ -93,10 +112,9 @@ rather than to cover the full design. **Built:**
 **Not built yet** — all designed in the spec above, none of it faked or
 stubbed here: the manifest system (`Resource`/`List`/`Form`, TOML sugar,
 codegen-with-skip), `sqlc` query colocation, the `Mergeable` event-sourced
-store shape, blobs, the crypto core, WebAuthn, the agents system, the
-component/UI vocabulary, and the preloaded `CLAUDE.md`/skill
-scaffolding. Each is a real, separate piece of work — see the design doc
-for the shape of each.
+store shape, blobs, the crypto core, WebAuthn, the agents system, and the
+preloaded `CLAUDE.md`/skill scaffolding. Each is a real, separate piece
+of work — see the design doc for the shape of each.
 
 ## A known implementation decision worth flagging
 
