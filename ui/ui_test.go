@@ -667,6 +667,28 @@ func countOpenTags(s, tag string) int {
 	return strings.Count(s, "<"+tag+" ") + strings.Count(s, "<"+tag+">")
 }
 
+func TestListRowActionRendersAStatusPill(t *testing.T) {
+	got := render(t, "list-row-action", map[string]any{
+		"Href": "/admin/posts/1/edit", "Main": "Release notes",
+		"StatusTone": "positive", "StatusLabel": "Published",
+		"ActionHref": "/posts/1", "ActionLabel": "View",
+	})
+	if !strings.Contains(got, `<span class="rst-status" data-tone="positive">Published</span>`) {
+		t.Errorf("status pill missing or wrong: %s", got)
+	}
+	// The pill sits in the right-hand group, before the action pill.
+	if strings.Index(got, `class="rst-status"`) > strings.Index(got, `class="rst-row__action"`) {
+		t.Errorf("status pill rendered after the action pill: %s", got)
+	}
+}
+
+func TestListRowActionStatusPillAbsentByDefault(t *testing.T) {
+	got := render(t, "list-row-action", map[string]any{"Href": "/p", "Main": "M"})
+	if strings.Contains(got, "rst-status") {
+		t.Errorf("status pill rendered without StatusLabel: %s", got)
+	}
+}
+
 // F10 regression (examples/blog friction log): the class the partial
 // emits for a disabled chip and the selector tokens.css styles must be
 // the same string — they drifted apart once, leaving a disabled
