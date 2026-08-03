@@ -42,6 +42,7 @@ func TestResolutionPrecedence(t *testing.T) {
 		{"Accept-Language when there is no prefix", "/orders", "fr", "en", "fr", "/orders"},
 		{"Accept-Language honours q order", "/orders", "de-informal;q=0.4, fr;q=0.9", "", "fr", "/orders"},
 		{"Accept-Language matches on the primary subtag", "/orders", "fr-CA", "", "fr", "/orders"},
+		{"Accept-Language q order beats a lower-q exact match", "/orders", "fr-CA, en;q=0.5", "", "fr", "/orders"},
 		{"cookie only when the header names nothing declared", "/orders", "es", "fr", "fr", "/orders"},
 		{"cookie ignored when it names an undeclared locale", "/orders", "", "es", "en", "/orders"},
 		{"default when nothing matches", "/orders", "", "", "en", "/orders"},

@@ -47,12 +47,16 @@ func (l *Locales) Middleware(next http.Handler) http.Handler {
 
 		ctx := context.WithValue(r.Context(), localeCtxKey{}, code)
 		ctx = context.WithValue(ctx, localesCtxKey{}, l)
-		// Clone, never mutate: the caller's request and URL belong to
-		// whatever wrapped us, and a rewritten path must not leak out.
-		r2 := r.Clone(ctx)
+		// Shallow copy (the http.StripPrefix shape), never mutate: only
+		// the context and sometimes the URL change, so a full r.Clone —
+		// which also deep-copies Header — buys nothing but ~15-20 allocs
+		// on every request. Copy the URL itself before writing to it, so
+		// the caller's URL, and any rewritten path, never leaks out.
+		r2 := r.WithContext(ctx)
 		if rest != "" {
-			r2.URL.Path = rest
-			r2.URL.RawPath = ""
+			u := *r.URL
+			u.Path, u.RawPath = rest, ""
+			r2.URL = &u
 		}
 		next.ServeHTTP(w, r2)
 	})
@@ -77,9 +81,12 @@ func (l *Locales) splitPrefix(p string) (code, rest string) {
 }
 
 // negotiate picks the best declared locale for an Accept-Language
-// header: exact tag match first, then a primary-subtag match, so an
-// "fr-CA" request lands on a declared "fr" or "fr-informal". Highest q
-// wins; declaration order breaks ties.
+// header. Prefs are walked in q order (highest first, declaration order
+// breaking ties); for each pref, exact tag match is tried before
+// primary-subtag match, so an "fr-CA" request lands on a declared "fr"
+// or "fr-informal". The nesting must stay pref-outer, match-kind-inner:
+// the reverse (every pref's exact match before any pref's subtag match)
+// would let a low-q exact match beat a high-q subtag match.
 func (l *Locales) negotiate(header string) string {
 	type pref struct {
 		tag string
@@ -115,8 +122,6 @@ func (l *Locales) negotiate(header string) string {
 				return c
 			}
 		}
-	}
-	for _, p := range prefs {
 		for _, c := range l.codes {
 			if strings.EqualFold(primarySubtag(c), primarySubtag(p.tag)) {
 				return c
