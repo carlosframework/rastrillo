@@ -6,21 +6,35 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 // Exactly one of Mux and Router: Serve must refuse both-set and
-// neither-set before it touches a listener or a database.
+// neither-set before it ever calls listen. Addr is set to an address in
+// the TEST-NET-1 documentation range (RFC 5737) — never assigned to a
+// real interface — so that if the guard is ever moved past listen, the
+// mutant fails to bind instead of silently succeeding (both-set leaking
+// a live listener on :8080, neither-set only coincidentally failing with
+// "address already in use" from the leaked one). Asserting the error
+// text names the guard, not just non-nil, means only the actual guard
+// satisfies this test — any other failure (e.g. a listen error) does not.
 func TestServeRequiresExactlyOneOfMuxAndRouter(t *testing.T) {
+	const wantErr = "exactly one of"
+	unbindable := "192.0.2.1:1"
+
 	both := Options{
+		Addr:   unbindable,
 		Mux:    http.NewServeMux(),
 		Router: func(*sql.DB) (*http.ServeMux, error) { return http.NewServeMux(), nil },
 	}
-	if err := Serve(both); err == nil {
-		t.Error("Serve accepted both Mux and Router")
+	if err := Serve(both); err == nil || !strings.Contains(err.Error(), wantErr) {
+		t.Errorf("Serve(both Mux and Router) = %v, want an error containing %q", err, wantErr)
 	}
-	if err := Serve(Options{}); err == nil {
-		t.Error("Serve accepted neither Mux nor Router")
+
+	neither := Options{Addr: unbindable}
+	if err := Serve(neither); err == nil || !strings.Contains(err.Error(), wantErr) {
+		t.Errorf("Serve(neither Mux nor Router) = %v, want an error containing %q", err, wantErr)
 	}
 }
 

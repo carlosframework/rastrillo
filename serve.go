@@ -56,7 +56,9 @@ type Options struct {
 	//
 	// Exactly one of Mux and Router must be set. With DBPath empty,
 	// Router is called with a nil db — an app without a database can
-	// still defer its mux construction.
+	// still defer its mux construction. Serve owns the handle and
+	// closes it when Serve returns; do not retain it past that. An app
+	// that needs a handle outside Serve's lifetime calls OpenDB itself.
 	Router func(db *sql.DB) (*http.ServeMux, error)
 
 	// DBPath, if set, opens a SQLite database with the pragma ordering
