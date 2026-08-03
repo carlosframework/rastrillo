@@ -46,7 +46,7 @@ func Router(ctxFactory func(*http.Request) *rastrillo.Ctx) *http.ServeMux {
 	mux.HandleFunc("GET /admin/posts/new", func(w http.ResponseWriter, r *http.Request) {
 		act_admin_posts_new_get.Handle(ctxFactory(r), w, r)
 	})
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		act_index_get.Handle(ctxFactory(r), w, r)
 	})
 	mux.HandleFunc("GET /posts/{id}", func(w http.ResponseWriter, r *http.Request) {

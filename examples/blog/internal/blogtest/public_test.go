@@ -71,17 +71,14 @@ func TestUnmatchedGETsAre404NotTheHomepage(t *testing.T) {
 	}
 }
 
-// GET / matches the path of POST /nonsense but not its method, so the
-// stdlib mux answers 405 before any action runs. Worth knowing before
-// someone reads a 405 as a routing bug.
-func TestPostToAnUnmatchedPathIs405(t *testing.T) {
+// GET /{$} is an exact match for just "/", so POST to an unmatched path
+// has no route at all and gets 404 from the mux, not 405. The generator's
+// exact pattern anchors the root and eliminates the prefix-match ambiguity.
+func TestPostToAnUnmatchedPathIs404(t *testing.T) {
 	app, _ := newApp(t)
 
 	rec := post(t, app, "/nonsense", nil)
-	wantStatus(t, rec, http.StatusMethodNotAllowed)
-	if got, want := rec.Header().Get("Allow"), "GET, HEAD"; got != want {
-		t.Errorf("Allow = %q, want %q", got, want)
-	}
+	wantStatus(t, rec, http.StatusNotFound)
 }
 
 func TestPostPageRendersParagraphs(t *testing.T) {
