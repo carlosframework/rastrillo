@@ -32,12 +32,18 @@
 //
 //	"<resource.Name>/list"  — index.GET only
 //	"<resource.Name>/show"  — [id]/index.GET only
-//	"<resource.Name>/form"  — new.GET, [id]/edit.GET, and every 400
-//	                          re-render (index.POST, edit-basics.POST,
-//	                          edit-advanced.POST all share it, since
+//	"<resource.Name>/form"  — new.GET and [id]/edit.GET always; also
+//	                          every 400 re-render (index.POST,
+//	                          edit-basics.POST, edit-advanced.POST) —
+//	                          though a re-render only happens, and so
+//	                          only those files call Render at all, when
+//	                          their own field group actually has a
+//	                          Money field to fail on (see "no
+//	                          validation branch" below). Every file
+//	                          that does call it uses this same name:
 //	                          form.html's IsNew flag is what tells the
 //	                          New state from the Edit state, not a
-//	                          separate template)
+//	                          separate template.
 //
 // This mirrors the templates' own directory shape (gen/templates/
 // <name>/{list,show,form}.html minus the .html suffix) rather than
