@@ -50,6 +50,9 @@ rather than to cover the full design. **Built:**
   platform's activation contract (`Options.Socket`/`Options.Addr`/systemd
   `LISTEN_FDS`, matching `carlosframework/platform`'s `testdata/echoapp`
   exactly); `GET /healthz` and `GET /api/version` answered automatically.
+  An app that keeps its database in `Ctx` sets `Options.Router` instead
+  of `Options.Mux` and is handed the `*sql.DB` Serve opened;
+  `rastrillo.OpenDB` is the same corrected opener exported for tests.
   Between `Serve` and `Run`, the activation contract is covered end to
   end: every route kind the platform runs — always-on instance,
   hibernating exec child, unit tenant — boots the same scaffolded app.

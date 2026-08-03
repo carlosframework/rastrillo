@@ -13,12 +13,13 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite" // the app opens its own handle; see Open
+	"github.com/carlosframework/rastrillo"
 )
 
-// migration is the app's whole schema: one additive, idempotent
-// statement, applied at startup by Open.
-const migration = `
+// Migration is the app's whole schema: one additive, idempotent
+// statement. main.go hands it to rastrillo via Options.Migrations; Open
+// applies it for tests.
+const Migration = `
 CREATE TABLE IF NOT EXISTS posts (
   id         INTEGER PRIMARY KEY,
   title      TEXT    NOT NULL,
@@ -40,23 +41,12 @@ type Post struct {
 	UpdatedAt time.Time
 }
 
-// Open opens the app's SQLite database and applies the migration.
-//
-// The DSN reproduces rastrillo's own openDB by hand — busy_timeout before
-// journal_mode=WAL, then SetMaxOpenConns(1) — because rastrillo.Serve
-// never hands its opened *sql.DB back to the app, and every action here
-// reads the database through Ctx.DB. See the README's friction log, F4.
+// Open opens the app's SQLite database with rastrillo's corrected
+// opener and applies the migration. The serving path doesn't use this —
+// main.go lets Serve open the database and hand the *sql.DB back via
+// Options.Router — but the tests still want a one-call migrated handle.
 func Open(path string) (*sql.DB, error) {
-	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
-	if err != nil {
-		return nil, err
-	}
-	db.SetMaxOpenConns(1)
-	if _, err := db.Exec(migration); err != nil {
-		db.Close()
-		return nil, err
-	}
-	return db, nil
+	return rastrillo.OpenDB(path, []string{Migration})
 }
 
 const selectColumns = `id, title, body, published, created_at, updated_at`
