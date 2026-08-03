@@ -121,6 +121,8 @@ type Row struct {
 	Href        string
 	Main        string
 	Sub         string
+	StatusTone  string
+	StatusLabel string
 	ActionHref  string
 	ActionLabel string
 	ActionAria  string
@@ -292,9 +294,9 @@ func FormatDate(t time.Time) string { return t.Format("2 January 2006") }
 // PublishedLine is a published post's meta line.
 func PublishedLine(t time.Time) string { return "Published " + FormatDate(t) }
 
-// DraftLine is a draft's meta line. Status rides in the row's Sub as
-// prose because the stock row has no status slot — friction finding F1.
-func DraftLine(t time.Time) string { return "Draft · edited " + FormatDate(t) }
+// DraftLine is a draft's meta line: when it was last touched. Status
+// lives in the row's pill, not here.
+func DraftLine(t time.Time) string { return "Edited " + FormatDate(t) }
 
 // PublicRows builds the public index's rows. No action pill: the row
 // already goes to the only place it could go, and a second link to the
@@ -318,12 +320,15 @@ func AdminRows(posts []Post) []Row {
 	rows := make([]Row, 0, len(posts))
 	for _, p := range posts {
 		row := Row{
-			Href: fmt.Sprintf("/admin/posts/%d/edit", p.ID),
-			Main: p.Title,
-			Sub:  DraftLine(p.UpdatedAt),
+			Href:        fmt.Sprintf("/admin/posts/%d/edit", p.ID),
+			Main:        p.Title,
+			Sub:         DraftLine(p.UpdatedAt),
+			StatusTone:  "neutral",
+			StatusLabel: "Draft",
 		}
 		if p.Published {
 			row.Sub = PublishedLine(p.CreatedAt)
+			row.StatusTone, row.StatusLabel = "positive", "Published"
 			row.ActionHref = fmt.Sprintf("/posts/%d", p.ID)
 			row.ActionLabel = "View"
 			row.ActionAria = "View " + p.Title
