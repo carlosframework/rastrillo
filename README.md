@@ -39,7 +39,7 @@ rather than to cover the full design. **Built:**
   inside its SIGKILL budget.
 - **`rastrillo.Serve`** — the bootstrap (design doc §5): the SQLite
   pragma-ordering fix, `SetMaxOpenConns(1)`, additive migrations; the
-  platform's activation contract (`-socket`/`-addr`/systemd
+  platform's activation contract (`Options.Socket`/`Options.Addr`/systemd
   `LISTEN_FDS`, matching `carlosframework/platform`'s `testdata/echoapp`
   exactly); `GET /healthz` and `GET /api/version` answered automatically.
   Between `Serve` and `Run`, the activation contract is covered end to

@@ -147,8 +147,8 @@ func listen(socket, addr string) (net.Listener, error) {
 // openDB applies the SQLite convention the survey found hand-propagated,
 // with fixes, repo to repo (design doc §5): busy_timeout set *before*
 // journal_mode=WAL — the reverse order crashes with SQLITE_BUSY under
-// concurrent open, titogo's real fix — then SetMaxOpenConns(1), then
-// migrate.
+// concurrent open, titogo's real fix — then SetMaxOpenConns(1), then an
+// eager ping so the file exists on disk from boot, then migrate.
 func openDB(path string, migrations []string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
 	if err != nil {
@@ -163,7 +163,7 @@ func openDB(path string, migrations []string) (*sql.DB, error) {
 	// connection open now, at boot, instead of on the first request.
 	if err := db.Ping(); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("ping: %w", err)
+		return nil, fmt.Errorf("ping %s: %w", path, err)
 	}
 
 	for i, m := range migrations {
