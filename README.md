@@ -18,15 +18,16 @@ rather than to cover the full design. **Built:**
   (design doc §4): walks `actions/`, emits `gen/router.go` on a Go 1.22
   `http.ServeMux`. Fails loudly on route collisions.
 - **`rastrillo dev [dir] [-- app args]`** — the development watch loop
-  (design doc §11): watches `app/`, `actions/`, `manifest/`, and `cmd/` by
-  polling. On any change, reruns `rastrillo generate`, builds the app's
-  `./cmd/<name>` package to a temporary binary (cleaned up on exit), and
-  restarts the running process (graceful SIGTERM). A failed generate or
-  rebuild keeps the previous build serving; a failed restart keeps the loop
-  watching too — either way, the next save retries. Expects the
-  `rastrillo new` layout: exactly one directory under `cmd/`. Useful for
-  rapid iteration: edits to `actions/` require regeneration (the binary
-  uses generated code under `gen/`), and `dev` does that automatically.
+  (design doc §11): watches `app/`, `actions/`, `manifest/`, `cmd/`,
+  `locales/`, and `templates/` by polling. On any change, reruns `rastrillo
+  generate`, builds the app's `./cmd/<name>` package to a temporary binary
+  (cleaned up on exit), and restarts the running process (graceful
+  SIGTERM). A failed generate or rebuild keeps the previous build serving;
+  a failed restart keeps the loop watching too — either way, the next save
+  retries. Expects the `rastrillo new` layout: exactly one directory under
+  `cmd/`. Useful for rapid iteration: edits to `actions/` require
+  regeneration (the binary uses generated code under `gen/`), and `dev`
+  does that automatically.
 - **`rastrillo.Run`** — the process entrypoint the scaffold wires up: it
   resolves whichever of the platform's two activation argv shapes the
   binary was invoked with — `-socket`/`-addr`/`-db` flags for an agent
@@ -37,6 +38,14 @@ rather than to cover the full design. **Built:**
   dir. Hibernation requires nothing else from the app: the activator
   owns the restore/replicate cycle, and `Serve`'s SIGTERM drain fits
   inside its SIGKILL budget.
+- **`rastrillo.Serve`** — the bootstrap (design doc §5): the SQLite
+  pragma-ordering fix, `SetMaxOpenConns(1)`, additive migrations; the
+  platform's activation contract (`Options.Socket`/`Options.Addr`/systemd
+  `LISTEN_FDS`, matching `carlosframework/platform`'s `testdata/echoapp`
+  exactly); `GET /healthz` and `GET /api/version` answered automatically.
+  Between `Serve` and `Run`, the activation contract is covered end to
+  end: every route kind the platform runs — always-on instance,
+  hibernating exec child, unit tenant — boots the same scaffolded app.
 - **Localization** (design doc §10) — `Options.Locales`/`DefaultLocale`/
   `LocaleFS` declare an app's locale set and supply its catalogs from an
   `embed.FS` carrying `locales/<code>.toml` (flat `key = "value"` TOML).
@@ -49,24 +58,24 @@ rather than to cover the full design. **Built:**
   lookup falls back through the requested locale's catalog, the default
   locale's catalog, the framework's base catalog, and finally the key
   itself — a missing translation stays visible on the page, never blank.
-  `rastrillo generate --check [--default-locale <code>]` fails loudly
-  when a non-default catalog is missing keys the default has (§10's
-  "silent fallback while iterating, loud failure before ship"), and
-  `rastrillo dev` now watches `locales/` and `templates/` too, on top of
-  its existing directories. Two honest caveats: an app that declares
-  locale `en` can't serve an app route whose first path segment is also
-  `en` — inherent to prefix routing, not a bug to fix; and a `ServeMux`
-  trailing-slash redirect issued under a locale prefix currently emits
-  the unprefixed path, dropping the locale on that one redirect (known
-  limitation).
-- **`rastrillo.Serve`** — the bootstrap (design doc §5): the SQLite
-  pragma-ordering fix, `SetMaxOpenConns(1)`, additive migrations; the
-  platform's activation contract (`Options.Socket`/`Options.Addr`/systemd
-  `LISTEN_FDS`, matching `carlosframework/platform`'s `testdata/echoapp`
-  exactly); `GET /healthz` and `GET /api/version` answered automatically.
-  Between `Serve` and `Run`, the activation contract is covered end to
-  end: every route kind the platform runs — always-on instance,
-  hibernating exec child, unit tenant — boots the same scaffolded app.
+  The framework base catalog layer is empty in v1 (it stays empty until
+  the component library ships its base English catalog), so today that
+  fallback step is a no-op. `rastrillo generate --check [--default-locale
+  <code>]` fails loudly when a non-default catalog is missing keys the
+  default has (§10's "silent fallback while iterating, loud failure
+  before ship"); that gate runs under `--check` only — plain `rastrillo
+  generate` (and so `rastrillo dev` and `rastrillo new`) never fails on an
+  incomplete catalog. `--check`'s `--default-locale` flag defaults to
+  `en` and is not read from `Options.DefaultLocale` — if an app sets a
+  different `DefaultLocale`, pass the matching `--default-locale` by hand
+  or the check compares against the wrong catalog. Nothing writes the
+  `rastrillo_locale` cookie yet; persisting a user's locale choice across
+  requests is the app's job for now. Two honest caveats: an app that
+  declares locale `en` can't serve an app route whose first path segment
+  is also `en` — inherent to prefix routing, not a bug to fix; and a
+  `ServeMux` trailing-slash redirect issued under a locale prefix
+  currently emits the unprefixed path, dropping the locale on that one
+  redirect (known limitation).
 - **`examples/helloworld`** — a real scaffolded app, checked in, proven
   to ship/promote/serve through the actual `carlos` binary — see
   [`hack/local-deploy-demo.sh`](hack/local-deploy-demo.sh).

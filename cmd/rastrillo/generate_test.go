@@ -50,6 +50,25 @@ func TestGenerateCheckWritesNothing(t *testing.T) {
 	}
 }
 
+func TestGenerateWithoutCheckIgnoresAnIncompleteCatalog(t *testing.T) {
+	// Plain `generate` (what `rastrillo dev` reruns on every save, and
+	// what `rastrillo new` runs once) must never hard-fail on an
+	// incomplete catalog — design doc §10's "silent fallback while
+	// iterating" applies here; the loud failure is --check-only.
+	dir := scaffold(t, map[string]string{
+		"go.mod":               "module demo\n\ngo 1.22\n",
+		"actions/index.GET.go": handleSrc,
+		"locales/en.toml":      "a = \"A\"\nb = \"B\"\n",
+		"locales/fr.toml":      "a = \"A\"\n",
+	})
+	if err := runGenerate([]string{dir}); err != nil {
+		t.Fatalf("plain generate must not fail on an incomplete catalog: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "gen", "router.go")); err != nil {
+		t.Fatalf("expected gen/router.go: %v", err)
+	}
+}
+
 func TestGenerateCheckFailsOnAnIncompleteCatalog(t *testing.T) {
 	dir := scaffold(t, map[string]string{
 		"go.mod":               "module demo\n\ngo 1.22\n",

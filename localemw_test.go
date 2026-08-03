@@ -101,6 +101,35 @@ func TestTranslationOutsideAMiddlewareRequest(t *testing.T) {
 	}
 }
 
+func TestMiddlewarePreservesRawPathWhenStrippingPrefix(t *testing.T) {
+	// A locale prefix must be invisible to the app below it: the
+	// request %-encoding a route sees for /fr/files/a%2Fb must match
+	// what it sees for the unprefixed /files/a%2Fb, or the same URL
+	// routes two different ways depending on whether it's localized.
+	// EscapedPath() is what a wildcard route ({rest...}) and anything
+	// re-parsing the raw path actually consult, so it's what has to
+	// agree — a mux registered here (rather than the bare probe()
+	// helper used elsewhere in this file) is what exercises that.
+	l := mwLocales(t)
+	mux := http.NewServeMux()
+	var gotEscaped string
+	mux.HandleFunc("/files/{rest...}", func(_ http.ResponseWriter, r *http.Request) {
+		gotEscaped = r.URL.EscapedPath()
+	})
+	h := l.Middleware(mux)
+
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/fr/files/a%2Fb", nil))
+	if gotEscaped != "/files/a%2Fb" {
+		t.Errorf("EscapedPath() = %q, want /files/a%%2Fb", gotEscaped)
+	}
+
+	gotEscaped = ""
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/files/a%2Fb", nil))
+	if gotEscaped != "/files/a%2Fb" {
+		t.Errorf("unprefixed EscapedPath() = %q, want /files/a%%2Fb", gotEscaped)
+	}
+}
+
 func TestLocaleFromWithoutMiddleware(t *testing.T) {
 	if got := LocaleFrom(httptest.NewRequest("GET", "/", nil)); got != "" {
 		t.Errorf("LocaleFrom = %q, want \"\"", got)

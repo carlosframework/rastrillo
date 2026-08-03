@@ -64,27 +64,27 @@ func runGenerate(args []string) error {
 		return fmt.Errorf("%d route collision(s); build fails loudly on purpose (design doc §4)", len(collisions))
 	}
 
-	missing, err := generate.MissingKeys(filepath.Join(dir, "locales"), *defaultLocale)
-	if err != nil {
-		return fmt.Errorf("i18n catalog check: %w", err)
-	}
-	if len(missing) > 0 {
-		codes := make([]string, 0, len(missing))
-		for code := range missing {
-			codes = append(codes, code)
-		}
-		sort.Strings(codes)
-		fmt.Fprintf(os.Stderr, "rastrillo generate: incomplete locale catalogs (default %q) —\n", *defaultLocale)
-		for _, code := range codes {
-			fmt.Fprintf(os.Stderr, "  locales/%s.toml is missing:\n", code)
-			for _, key := range missing[code] {
-				fmt.Fprintf(os.Stderr, "    %s\n", key)
-			}
-		}
-		return fmt.Errorf("%d locale catalog(s) incomplete; silent fallback while iterating, loud failure before ship (design doc §10)", len(missing))
-	}
-
 	if *check {
+		missing, err := generate.MissingKeys(filepath.Join(dir, "locales"), *defaultLocale)
+		if err != nil {
+			return fmt.Errorf("i18n catalog check: %w", err)
+		}
+		if len(missing) > 0 {
+			codes := make([]string, 0, len(missing))
+			for code := range missing {
+				codes = append(codes, code)
+			}
+			sort.Strings(codes)
+			fmt.Fprintf(os.Stderr, "rastrillo generate: incomplete locale catalogs (default %q) —\n", *defaultLocale)
+			for _, code := range codes {
+				fmt.Fprintf(os.Stderr, "  locales/%s.toml is missing:\n", code)
+				for _, key := range missing[code] {
+					fmt.Fprintf(os.Stderr, "    %s\n", key)
+				}
+			}
+			return fmt.Errorf("%d locale catalog(s) incomplete; silent fallback while iterating, loud failure before ship (design doc §10)", len(missing))
+		}
+
 		fmt.Printf("rastrillo generate --check: %d route(s), locale catalogs complete\n", len(actions))
 		return nil
 	}

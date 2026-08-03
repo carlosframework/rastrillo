@@ -55,7 +55,18 @@ func (l *Locales) Middleware(next http.Handler) http.Handler {
 		r2 := r.WithContext(ctx)
 		if rest != "" {
 			u := *r.URL
-			u.Path, u.RawPath = rest, ""
+			u.Path = rest
+			u.RawPath = ""
+			if r.URL.RawPath != "" {
+				// EscapedPath() recomputes from Path when RawPath is
+				// empty, which decodes any %2F back to a literal
+				// slash: /fr/files/a%2Fb would then route as
+				// /files/a/b (404) instead of matching the same
+				// route as the unprefixed /files/a%2Fb. Strip the
+				// locale segment from RawPath too, so both forms
+				// keep encoding the same route.
+				u.RawPath = strings.TrimPrefix(r.URL.RawPath, "/"+code)
+			}
 			r2.URL = &u
 		}
 		next.ServeHTTP(w, r2)
