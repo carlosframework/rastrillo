@@ -580,6 +580,38 @@ func allPartials() []struct {
 				map[string]any{"Label": "Main page", "Value": "No"},
 			},
 		}},
+		{"field", map[string]any{
+			"ID": "email", "Name": "email", "Label": "Email", "Type": "email",
+			"Required": true, "Help": "We'll never share this.",
+		}},
+		{"field-select", map[string]any{
+			"ID": "role", "Name": "role", "Label": "Role",
+			"Options": []any{
+				map[string]any{"Value": "admin", "Label": "Admin", "Selected": true},
+				map[string]any{"Value": "member", "Label": "Member"},
+			},
+		}},
+		{"field-textarea", map[string]any{
+			"ID": "bio", "Name": "bio", "Label": "Bio", "Rows": "4",
+			"Help": "Shown on your profile.",
+		}},
+		{"field-check", map[string]any{
+			"Name": "notify", "Label": "Email me about replies", "Checked": true,
+		}},
+		{"choice-field", map[string]any{
+			"Legend": "Plan", "Name": "plan",
+			"Options": []any{
+				map[string]any{"Value": "free", "Title": "Free", "Desc": "Good to start."},
+				map[string]any{"Value": "pro", "Title": "Pro", "Desc": "For growing teams.", "Checked": true},
+			},
+		}},
+		{"seg-tabs", map[string]any{
+			"Label": "Sections",
+			"Items": []any{
+				map[string]any{"Label": "Basics", "Href": "?tab=basics", "Current": true},
+				map[string]any{"Label": "Advanced", "Href": "?tab=advanced"},
+			},
+		}},
 	}
 }
 
@@ -604,14 +636,15 @@ func TestAllPartialsAreDefined(t *testing.T) {
 		"page-header", "list-bar", "list-bar-search", "list-search-submit",
 		"list-row-action", "status-pill", "empty-state", "pagination",
 		"badge", "meter", "person", "callout", "detail-list",
+		"field", "field-select", "field-textarea", "field-check", "choice-field", "seg-tabs",
 	}
 	for _, name := range want {
 		if tmpl.Lookup(name) == nil {
 			t.Errorf("partial %q is not defined", name)
 		}
 	}
-	if len(want) != 13 {
-		t.Fatalf("the shipped set is 13 partials, this list has %d", len(want))
+	if len(want) != 19 {
+		t.Fatalf("the shipped set is 19 partials, this list has %d", len(want))
 	}
 }
 
@@ -662,6 +695,19 @@ func TestEveryControlHasAnAccessibleName(t *testing.T) {
 	page := render(t, "pagination", fixtureFor(t, "pagination"))
 	if !strings.Contains(page, `aria-label="Pagination"`) {
 		t.Errorf("the pagination nav has no accessible name: %s", page)
+	}
+	field := render(t, "field", fixtureFor(t, "field"))
+	if !strings.Contains(field, `<label class="rst-field__label" for="email">`) {
+		t.Errorf("the field's input has no wired label: %s", field)
+	}
+	choice := render(t, "choice-field", fixtureFor(t, "choice-field"))
+	if !strings.Contains(choice, "<legend>Plan</legend>") {
+		t.Errorf("choice-field's legend did not render: %s", choice)
+	}
+	check := render(t, "field-check", fixtureFor(t, "field-check"))
+	trackEnd := strings.Index(check, `</span>`)
+	if trackEnd == -1 || !strings.Contains(check[trackEnd:], "Email me about replies") {
+		t.Errorf("field-check's label text must render outside the aria-hidden track: %s", check)
 	}
 }
 
@@ -744,6 +790,67 @@ func TestDisplayPartialClassesAreStyled(t *testing.T) {
 	}
 }
 
+// Same drift check again, for the form family this task adds: field,
+// field-select, field-textarea, field-check and choice-field between
+// them can emit every one of these classes.
+func TestFormPartialClassesAreStyled(t *testing.T) {
+	css := string(TokensCSS())
+	for _, class := range []string{
+		"rst-field", "rst-field__label", "rst-field__hint", "rst-field__help", "rst-field__error",
+		"rst-input", "rst-input--short",
+		"rst-switch", "rst-switch__track",
+		"rst-choice", "rst-choice__cards", "rst-choice__title", "rst-choice__desc",
+		"rst-seg-tabs",
+	} {
+		if !strings.Contains(css, "."+class) {
+			t.Errorf("tokens.css has no selector for %q", class)
+		}
+	}
+}
+
+// Help renders under the control wired via aria-describedby; Error
+// replaces it (never both at once) and additionally marks the control
+// aria-invalid and its own message role=alert.
+func TestFieldWiresHelpAndError(t *testing.T) {
+	help := render(t, "field", map[string]any{"ID": "f1", "Name": "n", "Label": "L", "Help": "h"})
+	if !strings.Contains(help, `aria-describedby="f1-help"`) || !strings.Contains(help, `id="f1-help"`) {
+		t.Errorf("Help not wired via aria-describedby: %s", help)
+	}
+	errd := render(t, "field", map[string]any{"ID": "f1", "Name": "n", "Label": "L", "Help": "h", "Error": "bad"})
+	if !strings.Contains(errd, `aria-invalid="true"`) || !strings.Contains(errd, `role="alert"`) {
+		t.Errorf("Error not wired: %s", errd)
+	}
+	if strings.Contains(errd, "f1-help") {
+		t.Errorf("Error replaces Help — both rendered: %s", errd)
+	}
+}
+
+// The switch is a real checkbox: keyboard and AT operate the actual
+// input, and the visible track is aria-hidden decoration on top of it.
+func TestFieldCheckIsARealCheckbox(t *testing.T) {
+	got := render(t, "field-check", map[string]any{"Name": "on", "Label": "Enable", "Checked": true})
+	for _, want := range []string{`type="checkbox"`, "checked", `aria-hidden="true"`, "rst-switch__track"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+// Exactly one tab is aria-current at a time — the accessibility signal,
+// not only the CSS that highlights it.
+func TestSegTabsMarksCurrent(t *testing.T) {
+	got := render(t, "seg-tabs", map[string]any{"Label": "Sections", "Items": []any{
+		map[string]any{"Label": "Basics", "Href": "?tab=basics", "Current": true},
+		map[string]any{"Label": "Advanced", "Href": "?tab=advanced"},
+	}})
+	if !strings.Contains(got, `aria-current="page">Basics`) {
+		t.Errorf("current tab unmarked: %s", got)
+	}
+	if strings.Count(got, "aria-current") != 1 {
+		t.Errorf("exactly one current tab: %s", got)
+	}
+}
+
 // iconSVG returns one vendored icon's markup as a plain string for
 // building styleguide samples inline. rastrillo.Icon returns
 // template.HTML; string() is safe here because every argument this
@@ -781,6 +888,41 @@ var styleguideSamples = map[string]string{
   </div>
 </details>
 <span class="rst-ftok"><span class="rst-ftok__k">Paid</span><a href="/orders" aria-label="Remove filter Paid">✕</a></span>`,
+	// form-layout demonstrates the classes tokens.css ships for form
+	// rhythm and the save bar (rst-form-flow, rst-field-row, rst-grow,
+	// rst-form-foot, rst-form-actions) — no partial emits these, since
+	// they wrap a caller-composed run of "field" partials rather than a
+	// single data shape. Two adjacent .rst-field divs exercise the
+	// rst-form-flow spacing rule; the row's grown field exercises
+	// rst-grow. The cancel/save pair reuses the existing button classes
+	// (Task 3's ambiguity resolution: no new rst-btn variant needed).
+	"form-layout": `<form class="rst-form-flow" method="post" action="/settings">
+  <div class="rst-field">
+    <label class="rst-field__label" for="name">Name</label>
+    <input class="rst-input" type="text" id="name" name="name">
+  </div>
+  <div class="rst-field">
+    <label class="rst-field__label" for="email">Email</label>
+    <input class="rst-input" type="email" id="email" name="email">
+  </div>
+  <div class="rst-field-row">
+    <div class="rst-field rst-grow">
+      <label class="rst-field__label" for="city">City</label>
+      <input class="rst-input" type="text" id="city" name="city">
+    </div>
+    <div class="rst-field">
+      <label class="rst-field__label" for="zip">ZIP</label>
+      <input class="rst-input rst-input--short" type="text" id="zip" name="zip">
+    </div>
+  </div>
+  <div class="rst-form-foot">
+    <span class="rst-form-foot__note">Changes save immediately.</span>
+    <div class="rst-form-actions">
+      <a class="rst-btn" href="/settings">Cancel</a>
+      <button class="rst-btn rst-btn--primary" type="submit">Save</button>
+    </div>
+  </div>
+</form>`,
 }
 
 // The samples are static HTML with no template actions, so parsing them
@@ -854,6 +996,17 @@ func TestIdiomClassesAreStyled(t *testing.T) {
 	} {
 		if !seen[class] {
 			t.Errorf("selector %q was added to tokens.css this task but no styleguide sample uses it", class)
+		}
+	}
+
+	// Task 3's form-layout selectors: no partial emits these (they wrap a
+	// caller-composed run of fields, not a single data shape), so the
+	// "form-layout" sample above is their only exercise.
+	for _, class := range []string{
+		"rst-form-flow", "rst-field-row", "rst-grow", "rst-form-foot", "rst-form-foot__note", "rst-form-actions",
+	} {
+		if !seen[class] {
+			t.Errorf("selector %q was added to tokens.css in the form-layout task but no styleguide sample uses it", class)
 		}
 	}
 }
