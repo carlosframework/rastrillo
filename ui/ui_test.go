@@ -328,9 +328,33 @@ func TestListBarWrapsTheSearchFormInAToolbarStrip(t *testing.T) {
 			t.Errorf("missing %q: %s", want, got)
 		}
 	}
-	// This slice renders no filter or sort control (spec §3).
+	// Without a Filter, the bar renders no dropdown — the key, not the
+	// slice boundary, is now what gates it.
 	if strings.Contains(got, "<details") {
-		t.Errorf("list-bar rendered a dropdown, which is a later slice: %s", got)
+		t.Errorf("list-bar rendered a dropdown without a Filter: %s", got)
+	}
+}
+
+func TestListBarRendersAFilterDropdownWhenGivenOne(t *testing.T) {
+	got := render(t, "list-bar", map[string]any{
+		"SearchAction": "/admin/posts",
+		"Filter": map[string]any{
+			"Label": "All",
+			"Aria":  "Filter by status: All",
+			"Items": []any{
+				map[string]any{"Href": "/admin/posts", "Label": "All", "Current": true},
+				map[string]any{"Href": "/admin/posts?status=draft", "Label": "Drafts"},
+			},
+		},
+	})
+	for _, want := range []string{
+		`<details class="rst-dropdown">`,
+		`aria-label="Filter by status: All"`,
+		`<a href="/admin/posts?status=draft">Drafts</a>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
 	}
 }
 
