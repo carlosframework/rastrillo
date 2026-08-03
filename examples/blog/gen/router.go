@@ -5,6 +5,7 @@ package gen
 import (
 	"net/http"
 
+	act_admin_posts_index_get "blog/gen/actions/admin/posts/index_get"
 	act_index_get "blog/gen/actions/index_get"
 	act_posts_id_index_get "blog/gen/actions/posts/id/index_get"
 	"github.com/carlosframework/rastrillo"
@@ -14,6 +15,9 @@ import (
 // *rastrillo.Ctx per request; see cmd/<app>/main.go.
 func Router(ctxFactory func(*http.Request) *rastrillo.Ctx) *http.ServeMux {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /admin/posts", func(w http.ResponseWriter, r *http.Request) {
+		act_admin_posts_index_get.Handle(ctxFactory(r), w, r)
+	})
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		act_index_get.Handle(ctxFactory(r), w, r)
 	})
