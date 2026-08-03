@@ -1,3 +1,7 @@
+// Package rastrillo defines the manifest types that encode resource
+// declarations — the sugar from design doc §9. Manifests are JSON
+// artifacts; the struct tags below define the artifact's stable public
+// interface (evolution only additive).
 package rastrillo
 
 import (
@@ -6,10 +10,11 @@ import (
 	"strings"
 )
 
-// Package rastrillo defines the manifest types that encode resource
-// declarations — the sugar from design doc §9. Manifests are JSON
-// artifacts; the struct tags below define the artifact's stable public
-// interface (evolution only additive).
+var (
+	namePattern    = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	segmentPattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
+	identPattern   = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
+)
 
 // Kind categorizes the input type for a column or form field.
 type Kind string
@@ -65,7 +70,7 @@ type Field struct {
 // Validate checks the resource declaration for consistency and validity.
 // It normalizes zero values for Kind and Store in place.
 func (r *Resource) Validate() error {
-	// Normalize Store and Kind zero values
+	// Zero values normalize: empty Kind → Text, empty Store → Exclusive
 	if r.Store == "" {
 		r.Store = Exclusive
 	}
@@ -85,15 +90,13 @@ func (r *Resource) Validate() error {
 		}
 	}
 
-	// Validate Name
 	if r.Name == "" {
 		return fmt.Errorf("name: must not be empty")
 	}
-	if !regexp.MustCompile(`^[a-z][a-z0-9_]*$`).MatchString(r.Name) {
+	if !namePattern.MatchString(r.Name) {
 		return fmt.Errorf("name: must be snake_case")
 	}
 
-	// Validate Route
 	if r.Route == "" {
 		return fmt.Errorf("route: must not be empty")
 	}
@@ -103,23 +106,20 @@ func (r *Resource) Validate() error {
 	if strings.HasSuffix(r.Route, "/") && r.Route != "/" {
 		return fmt.Errorf("route: must not have trailing slash")
 	}
-	// Validate route segments
+	// Route segments must be either {param} or [a-z0-9_-]+
 	segments := strings.Split(strings.TrimPrefix(r.Route, "/"), "/")
 	for _, seg := range segments {
 		if seg == "" {
 			continue
 		}
-		// Must be either {param} or [a-z0-9_-]+
 		if strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {
-			// param segment, valid
 			continue
 		}
-		if !regexp.MustCompile(`^[a-z0-9_-]+$`).MatchString(seg) {
+		if !segmentPattern.MatchString(seg) {
 			return fmt.Errorf("route: invalid segment %q", seg)
 		}
 	}
 
-	// Validate Store
 	if r.Store == Mergeable {
 		return fmt.Errorf("store: mergeable is not yet built")
 	}
@@ -127,7 +127,6 @@ func (r *Resource) Validate() error {
 		return fmt.Errorf("store: unknown value %q", r.Store)
 	}
 
-	// Validate Kinds
 	for _, col := range r.List.Columns {
 		if col.Kind != Text && col.Kind != Textarea && col.Kind != Money {
 			return fmt.Errorf("kind: unknown value %q", col.Kind)
@@ -144,42 +143,40 @@ func (r *Resource) Validate() error {
 		}
 	}
 
-	// Validate at least one column or field is declared
 	if len(r.List.Columns) == 0 && len(r.Form.Basics) == 0 && len(r.Form.Advanced) == 0 {
 		return fmt.Errorf("declaration: must have at least one list column or form field")
 	}
 
-	// Build set of column field names for filter validation
 	columnFields := make(map[string]bool)
 	for _, col := range r.List.Columns {
 		columnFields[col.Field] = true
 	}
 
-	// Validate Filter entries
 	for _, f := range r.List.Filter {
 		if !columnFields[f] {
 			return fmt.Errorf("filter: %q is not a declared column", f)
 		}
 	}
 
-	// Validate field/column names are valid identifiers
+	// Field and column names must be valid identifiers
 	for _, col := range r.List.Columns {
-		if !regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`).MatchString(col.Field) {
+		if !identPattern.MatchString(col.Field) {
 			return fmt.Errorf("name: %q is not a valid identifier", col.Field)
 		}
 	}
 	for _, fld := range r.Form.Basics {
-		if !regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`).MatchString(fld.Name) {
+		if !identPattern.MatchString(fld.Name) {
 			return fmt.Errorf("name: %q is not a valid identifier", fld.Name)
 		}
 	}
 	for _, fld := range r.Form.Advanced {
-		if !regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`).MatchString(fld.Name) {
+		if !identPattern.MatchString(fld.Name) {
 			return fmt.Errorf("name: %q is not a valid identifier", fld.Name)
 		}
 	}
 
-	// Check for case-insensitive duplicates within form fields (Basics + Advanced)
+	// Form fields (Basics + Advanced combined) must have no case-insensitive duplicates;
+	// columns may repeat as form fields, but the form must not have duplicates.
 	formFieldsLower := make(map[string]bool)
 	for _, fld := range r.Form.Basics {
 		lower := strings.ToLower(fld.Name)
@@ -196,7 +193,7 @@ func (r *Resource) Validate() error {
 		formFieldsLower[lower] = true
 	}
 
-	// Check for case-insensitive duplicates within columns
+	// Columns must have no case-insensitive duplicates among themselves
 	columnFieldsLower := make(map[string]bool)
 	for _, col := range r.List.Columns {
 		lower := strings.ToLower(col.Field)
