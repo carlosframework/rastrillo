@@ -1,9 +1,9 @@
 package generate
 
 import (
+	"go/build"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -255,7 +255,7 @@ func TestSkippedByDefaultBuild(t *testing.T) {
 		// build — the exact breakage --check exists to catch.
 		{"different but excluding tag", "//go:build ignore\n\npackage actions\n", true},
 		{"negated tag still compiles by default", "//go:build !" + BuildTag + "\n\npackage actions\n", false},
-		{"satisfied-by-default expression", "//go:build " + BuildTag + " || " + runtime.GOOS + "\n\npackage actions\n", false},
+		{"satisfied-by-default expression", "//go:build " + BuildTag + " || " + build.Default.GOOS + "\n\npackage actions\n", false},
 		{"legacy plus-build line", "// +build " + BuildTag + "\n\npackage actions\n", true},
 		{"tag after package clause does not count", "package actions\n\n//go:build " + BuildTag + "\n", false},
 	} {
