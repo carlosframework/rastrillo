@@ -15,6 +15,7 @@ import (
 
 	"github.com/carlosframework/rastrillo"
 
+	blogassets "blog"
 	"blog/gen"
 	"blog/internal/blog"
 )
@@ -40,10 +41,12 @@ func main() {
 			})
 
 			// The app serves its own static files — the framework
-			// never does. "GET /static/" is a longer pattern than
-			// "GET /", so the stdlib mux prefers it and no ordering
-			// care is needed.
-			mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+			// never does. They are embedded (see assets.go), so the
+			// binary is self-contained wherever it starts (F8).
+			// "GET /static/" is a longer pattern than "GET /{$}", so
+			// the stdlib mux prefers it and no ordering care is
+			// needed.
+			mux.Handle("GET /static/", http.FileServerFS(blogassets.StaticFS))
 			return mux, nil
 		},
 	})
