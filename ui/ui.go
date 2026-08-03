@@ -34,6 +34,61 @@
 // does not fail at Execute; the partials guard every optional field, so a
 // missing key renders nothing. A caller who wants missing-field detection
 // gets it by passing a Go struct instead of a dict-built map.
+//
+// # Class idioms
+//
+// Not every reusable shape can be a partial: a section box or a grid row
+// wraps a caller-chosen, arbitrary body, and a Go template partial can
+// only wrap data it already knows the shape of. For these, tokens.css
+// ships the class vocabulary and this doc shows the markup; the app
+// writes the HTML itself. The canonical, exercised versions of every
+// sample below live in ui_test.go's styleguideSamples, rendered by
+// TestStyleguideSamplesRender — copy from there, not from here, if the
+// two ever disagree.
+//
+// box — the section card. Its heading is a sibling before the card, not
+// inside it:
+//
+//	<div class="rst-box-head"><h2>Payout</h2><a class="rst-btn" href="/payout/edit">Edit</a></div>
+//	<section class="rst-box"><p>…</p><div class="rst-box-foot">Last updated 2 hours ago</div></section>
+//
+// list grid — the real data-table vocabulary. The card sets its columns
+// once with the --rst-cols custom property (trailing 32px reserved for a
+// kebab); rows only choose cells. A head row carries rst-lrow--head; a
+// data row's identity cell is rst-nm, a column hidden below 800px is
+// rst-m-hide, and the per-row overflow menu is a native
+// <details class="rst-row-menu"> — no JavaScript:
+//
+//	<div class="rst-card" style="--rst-cols: 2fr 110px 32px">
+//	  <div class="rst-lrow rst-lrow--head"><span>Order</span><span class="rst-m-hide">Status</span><span></span></div>
+//	  <div class="rst-lrow">
+//	    <a class="rst-nm" href="/orders/AB3PX">Grace Hopper<small>AB3PX · grace@example.com</small></a>
+//	    <span class="rst-m-hide rst-cell-mut">Paid</span>
+//	    <details class="rst-row-menu"><summary aria-label="Actions for order AB3PX">{{icon "kebab"}}</summary>
+//	      <div class="rst-row-menu__panel"><a href="/orders/AB3PX">View</a><hr><button type="submit" class="rst-danger">Refund order…</button></div>
+//	    </details>
+//	  </div>
+//	</div>
+//
+// dropdown — the details/summary menu vocabulary behind header overflow
+// menus and a list-bar's Filter/Sort controls. A dropdown's exclusivity
+// with its siblings (only one open at a time) is the native <details
+// name> attribute, never JavaScript; rst-menu-group nests a submenu the
+// same way. rst-caret is the disclosure arrow that flips on [open]:
+//
+//	<details class="rst-dropdown" name="list-controls">
+//	  <summary>Filter<span class="rst-caret" aria-hidden="true">{{icon "chevron-down"}}</span><span class="rst-sr-only">Filter orders: Paid</span></summary>
+//	  <div class="rst-dropdown__menu">
+//	    <a aria-current="true" href="/orders?status=paid">Paid</a>
+//	    <details class="rst-menu-group" open><summary>Price</summary><div><a href="/orders?price=free">Free</a></div></details>
+//	  </div>
+//	</details>
+//
+// ftok — an applied filter as a removable chip. The × is a plain link to
+// the unfiltered URL, so removing a filter is ordinary navigation, no
+// JavaScript:
+//
+//	<span class="rst-ftok"><span class="rst-ftok__k">Paid</span><a href="/orders" aria-label="Remove filter Paid">✕</a></span>
 package ui
 
 import (

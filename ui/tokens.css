@@ -154,6 +154,8 @@
   --rst-tone-warning-bg: #f4e4c9;
   --rst-tone-negative-fg: #93262f;
   --rst-tone-negative-bg: #f9dcdd;
+
+  --rst-shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 
 /* ── Colour: dark, following the OS. ──────────────────────────────── */
@@ -184,6 +186,8 @@
     --rst-tone-warning-bg: #322512;
     --rst-tone-negative-fg: #f58c95;
     --rst-tone-negative-bg: #35191e;
+
+    --rst-shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5);
   }
 }
 
@@ -216,6 +220,8 @@
   --rst-tone-warning-bg: #322512;
   --rst-tone-negative-fg: #f58c95;
   --rst-tone-negative-bg: #35191e;
+
+  --rst-shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 /* ── Base. Three rules, so a freshly scaffolded app looks finished
@@ -687,4 +693,86 @@ body {
   .rst-page-header h1 {
     font-size: 1.25rem;
   }
+}
+
+/* ── The structural idioms: box, list grid, row-menu, dropdown, ftok ── */
+
+/* box — the section card. Its heading (rst-box-head) is a SIBLING
+   before the box, never inside it: a screen is a stack of
+   section-header + card. A box-head action is a compact real button,
+   never a pill. */
+.rst-box { background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: var(--rst-radius); margin: var(--rst-sp-4) 0; padding: 1.1rem 1.25rem; }
+.rst-box > :first-child { margin-top: 0; }
+.rst-box > :last-child { margin-bottom: 0; }
+.rst-box-head { align-items: baseline; display: flex; gap: var(--rst-sp-4); justify-content: space-between; margin: 1.5rem 0 0.5rem; }
+.rst-box-head:first-child { margin-top: 0; }
+.rst-box-head + .rst-box { margin-top: 0; }
+.rst-box-head h2 { font-size: var(--rst-fs-base); margin: 0; }
+.rst-box-foot { border-top: 1px solid var(--rst-line); color: var(--rst-text-muted); margin-top: var(--rst-sp-4); padding-top: 0.75rem; }
+.rst-box > .rst-detail-list { margin: 0; }
+
+/* The list grid — the real data-table vocabulary. The card sets the
+   columns once (--rst-cols, inline, trailing 32px for the kebab);
+   rows only choose cells. Hover fill only on rows that contain the
+   identity link — a display-only row must never look clickable. */
+.rst-card { background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: var(--rst-radius); }
+.rst-lrow { align-items: center; border-bottom: 1px solid var(--rst-line); display: grid; gap: 0.85rem; grid-template-columns: var(--rst-cols, 1fr); padding: 0.68rem 1rem; position: relative; }
+.rst-lrow:last-child { border-bottom: 0; }
+.rst-lrow--head { color: var(--rst-text-faint); font-size: 0.71875rem; font-weight: 550; letter-spacing: 0.05em; padding: 0.55rem 1rem; text-transform: uppercase; }
+.rst-lrow:not(.rst-lrow--head):has(> .rst-nm, > .rst-person):hover { background: var(--rst-accent-soft); }
+.rst-nm { border-radius: var(--rst-radius-sm); color: inherit; font-weight: 550; min-width: 0; text-align: left; text-decoration: none; }
+a.rst-nm:hover { color: var(--rst-accent); }
+.rst-nm small { color: var(--rst-text-muted); display: block; font-size: var(--rst-fs-xs); font-weight: 400; }
+.rst-cell-mut { color: var(--rst-text-muted); font-size: var(--rst-fs-xs); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rst-no-match { color: var(--rst-text-muted); font-size: var(--rst-fs-sm); padding: 1.6rem 1rem; text-align: center; }
+.rst-no-match a { color: var(--rst-accent); }
+.rst-count-line { color: var(--rst-text-faint); font-size: var(--rst-fs-xs); margin: 0.7rem 0 0; }
+@media (max-width: 800px) {
+  .rst-m-hide { display: none; }
+  .rst-lrow, .rst-lrow--head { grid-template-columns: minmax(0, 1fr) auto 32px; }
+}
+
+/* row-menu — the per-row kebab: native details/summary, no JS. The
+   destructive item sits last, class rst-danger, label ending "…". */
+.rst-row-menu { justify-self: end; position: relative; }
+.rst-row-menu > summary { align-items: center; border-radius: var(--rst-radius-sm); color: var(--rst-text-faint); cursor: pointer; display: flex; height: 26px; justify-content: center; list-style: none; width: 26px; }
+.rst-row-menu > summary::-webkit-details-marker { display: none; }
+.rst-row-menu > summary:hover, .rst-row-menu[open] > summary { background: var(--rst-accent-soft); color: var(--rst-text); }
+.rst-row-menu__panel { background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: 9px; box-shadow: var(--rst-shadow-pop); min-width: 176px; padding: 0.25rem; position: absolute; right: 0; top: calc(100% + 4px); z-index: 40; }
+.rst-row-menu__panel a, .rst-row-menu__panel button { background: none; border: 0; border-radius: var(--rst-radius-sm); color: var(--rst-text); cursor: pointer; display: block; font: inherit; font-size: var(--rst-fs-sm); font-weight: 450; margin: 0; padding: 0.4rem 0.65rem; text-align: left; text-decoration: none; width: 100%; }
+.rst-row-menu__panel a:hover, .rst-row-menu__panel button:hover { background: var(--rst-accent-soft); }
+.rst-row-menu__panel hr { border: 0; border-top: 1px solid var(--rst-line); margin: 0.25rem 0; }
+.rst-danger { color: var(--rst-tone-negative-fg); }
+.rst-row-menu__panel .rst-danger:hover { background: var(--rst-tone-negative-bg); }
+
+/* dropdown — the details/summary menu vocabulary (header overflow,
+   list-bar Filter/Sort). Exclusivity between siblings is the native
+   details name attribute — zero JS. */
+.rst-dropdown { position: relative; }
+.rst-dropdown > summary { align-items: center; color: var(--rst-text-muted); cursor: pointer; display: flex; gap: 0.3rem; list-style: none; padding: 0.4rem 0.6rem; white-space: nowrap; }
+.rst-dropdown > summary::-webkit-details-marker { display: none; }
+.rst-dropdown > summary:hover, .rst-dropdown[open] > summary { color: var(--rst-text); }
+.rst-dropdown__menu { background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: 9px; box-shadow: var(--rst-shadow-pop); margin-top: 4px; min-width: 176px; padding: 0.25rem; position: absolute; right: 0; top: 100%; z-index: 30; }
+.rst-dropdown__menu a { border-radius: var(--rst-radius-sm); color: inherit; display: block; font-size: var(--rst-fs-sm); padding: 0.4rem 0.65rem; text-decoration: none; }
+.rst-dropdown__menu a:hover, .rst-dropdown__menu a[aria-current] { background: var(--rst-accent-soft); }
+.rst-dropdown__menu .rst-menu-group > summary { color: var(--rst-text-muted); cursor: pointer; font-size: var(--rst-fs-sm); list-style: none; padding: 0.4rem 0.65rem; }
+.rst-dropdown__menu .rst-menu-group > summary::-webkit-details-marker { display: none; }
+.rst-dropdown__menu .rst-menu-group > div { padding-left: 0.6rem; }
+.rst-caret { align-items: center; color: var(--rst-text-faint); display: inline-flex; font-size: 0.8em; transition: transform 0.15s; }
+.rst-caret svg, .rst-caret .icon { display: block; height: 1em; width: 1em; }
+details[open] > summary > .rst-caret { transform: rotate(180deg); }
+
+/* ftok — an applied filter as a removable chip; the × is a plain link
+   to the unfiltered URL, so removing a filter is just navigation. */
+.rst-ftok { align-items: center; background: var(--rst-surface); border: 1px solid var(--rst-line-strong); border-radius: 7px; display: inline-flex; font-size: var(--rst-fs-xs); gap: 0.45rem; padding: 0.1rem 0.3rem 0.1rem 0.6rem; }
+.rst-ftok .rst-ftok__k { color: var(--rst-text-muted); }
+.rst-ftok a { align-items: center; border-radius: 4px; color: var(--rst-text-faint); display: inline-flex; height: 17px; justify-content: center; text-decoration: none; width: 17px; }
+.rst-ftok a:hover { background: var(--rst-tone-negative-bg); color: var(--rst-tone-negative-fg); }
+
+/* Reduced motion: the caret's rotate transition is the only new
+   animation this batch adds. Everything else here (hover fills, colour
+   changes) is not a "large motion" trigger under 2.3.3, so it does not
+   need a rule here too. */
+@media (prefers-reduced-motion: reduce) {
+  .rst-caret { transition: none; }
 }

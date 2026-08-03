@@ -3,8 +3,11 @@ package ui
 import (
 	"html/template"
 	"io/fs"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/carlosframework/rastrillo"
 )
 
 // parseAll builds the template tree exactly the way an app is documented
@@ -738,5 +741,132 @@ func TestDisplayPartialClassesAreStyled(t *testing.T) {
 		if !strings.Contains(css, "."+class) {
 			t.Errorf("tokens.css has no selector for %q", class)
 		}
+	}
+}
+
+// iconSVG returns one vendored icon's markup as a plain string for
+// building styleguide samples inline. rastrillo.Icon returns
+// template.HTML; string() is safe here because every argument this
+// package's tests pass is a compile-time constant slug, never
+// request-derived text.
+func iconSVG(slug string) string { return string(rastrillo.Icon(slug)) }
+
+// styleguideSamples are the canonical markup samples for the class
+// idioms — structural components with arbitrary bodies that a Go
+// template partial cannot wrap. The smoke test renders them so every
+// documented class is exercised, and the class↔css test keeps them
+// honest against tokens.css (the F10 lesson, generalized). ui.go's
+// package doc references this map by name rather than duplicating the
+// markup, so the two cannot drift.
+var styleguideSamples = map[string]string{
+	"box": `<div class="rst-box-head"><h2>Payout</h2><a class="rst-btn" href="/payout/edit">Edit</a></div>
+<section class="rst-box"><p>Everything on a screen sits inside boxes.</p><div class="rst-box-foot">Last updated 2 hours ago</div></section>`,
+	"list-grid": `<div class="rst-card" style="--rst-cols: 2fr 110px 32px">
+  <div class="rst-lrow rst-lrow--head"><span>Order</span><span class="rst-m-hide">Status</span><span></span></div>
+  <div class="rst-lrow">
+    <a class="rst-nm" href="/orders/AB3PX">Grace Hopper<small>AB3PX · grace@example.com</small></a>
+    <span class="rst-m-hide rst-cell-mut">Paid</span>
+    <details class="rst-row-menu"><summary aria-label="Actions for order AB3PX">` + iconSVG("kebab") + `</summary>
+      <div class="rst-row-menu__panel"><a href="/orders/AB3PX">View</a><hr><button type="submit" class="rst-danger">Refund order…</button></div>
+    </details>
+  </div>
+  <p class="rst-no-match">No orders match. <a href="/orders">Clear filters</a></p>
+</div>
+<p class="rst-count-line">Displaying <strong>1–20</strong> of <strong>412</strong></p>`,
+	"dropdown": `<details class="rst-dropdown" name="list-controls">
+  <summary>Filter<span class="rst-caret" aria-hidden="true">` + iconSVG("chevron-down") + `</span><span class="rst-sr-only">Filter orders: Paid</span></summary>
+  <div class="rst-dropdown__menu">
+    <a aria-current="true" href="/orders?status=paid">Paid</a>
+    <details class="rst-menu-group" open><summary>Price</summary><div><a href="/orders?price=free">Free</a></div></details>
+  </div>
+</details>
+<span class="rst-ftok"><span class="rst-ftok__k">Paid</span><a href="/orders" aria-label="Remove filter Paid">✕</a></span>`,
+}
+
+// The samples are static HTML with no template actions, so parsing them
+// through the ui funcs is enough to prove they are well-formed
+// standalone markup a styleguide page can Execute verbatim.
+func TestStyleguideSamplesRender(t *testing.T) {
+	for name, sample := range styleguideSamples {
+		tmpl, err := template.New(name).Funcs(Funcs()).Parse(sample)
+		if err != nil {
+			t.Fatalf("%s: Parse: %v", name, err)
+		}
+		var buf strings.Builder
+		if err := tmpl.Execute(&buf, nil); err != nil {
+			t.Fatalf("%s: Execute: %v", name, err)
+		}
+		out := buf.String()
+		if out == "" {
+			t.Errorf("%s: rendered empty", name)
+		}
+		for _, tag := range []string{"div", "details", "section", "a", "span"} {
+			open, closed := countOpenTags(out, tag), strings.Count(out, "</"+tag+">")
+			if open != closed {
+				t.Errorf("%s: <%s> is unbalanced: %d opened, %d closed", name, tag, open, closed)
+			}
+		}
+	}
+}
+
+// rstClassPattern extracts one rst- class token, including its optional
+// BEM __element and --modifier suffixes.
+var rstClassPattern = regexp.MustCompile(`rst-[a-z-]+(?:__[a-z-]+)?(?:--[a-z-]+)?`)
+
+// classAttrPattern isolates class="..." attribute values, so extraction
+// runs over actual class tokens rather than the whole sample string —
+// the list-grid sample's inline `style="--rst-cols: …"` also matches
+// rstClassPattern (as "rst-cols"), but --rst-cols is a custom property
+// read with var(), never a class selector, and checking it against
+// tokens.css with a leading "." would be a false positive.
+var classAttrPattern = regexp.MustCompile(`class="([^"]*)"`)
+
+// TestIdiomClassesAreStyled is the F10 lesson in both directions: every
+// class a sample emits must have a selector in tokens.css (a sample
+// cannot reference a class that does not exist), and every selector this
+// task added must be exercised by some sample (an idiom cannot ship
+// undemonstrated).
+func TestIdiomClassesAreStyled(t *testing.T) {
+	css := string(TokensCSS())
+	seen := map[string]bool{}
+	for _, sample := range styleguideSamples {
+		for _, attr := range classAttrPattern.FindAllStringSubmatch(sample, -1) {
+			for _, class := range rstClassPattern.FindAllString(attr[1], -1) {
+				seen[class] = true
+			}
+		}
+	}
+	for class := range seen {
+		if !strings.Contains(css, "."+class) {
+			t.Errorf("tokens.css has no selector for %q (used in a styleguide sample)", class)
+		}
+	}
+
+	// The selectors this task's Step 1 added to tokens.css, listed
+	// literally: each one must appear in at least one sample above.
+	for _, class := range []string{
+		"rst-box", "rst-box-head", "rst-box-foot",
+		"rst-card", "rst-lrow", "rst-lrow--head", "rst-m-hide", "rst-nm", "rst-cell-mut",
+		"rst-no-match", "rst-count-line",
+		"rst-row-menu", "rst-row-menu__panel", "rst-danger",
+		"rst-dropdown", "rst-dropdown__menu", "rst-menu-group", "rst-caret",
+		"rst-ftok",
+	} {
+		if !seen[class] {
+			t.Errorf("selector %q was added to tokens.css this task but no styleguide sample uses it", class)
+		}
+	}
+}
+
+// The dropdown's exclusivity between siblings (only one open at a time)
+// is the native <details name> attribute, not JavaScript — this pins
+// both halves of that promise.
+func TestDropdownExclusivityIsNative(t *testing.T) {
+	sample := styleguideSamples["dropdown"]
+	if !strings.Contains(sample, `<details class="rst-dropdown" name=`) {
+		t.Errorf("dropdown sample's outer <details> carries no name attribute: %s", sample)
+	}
+	if strings.Contains(sample, "<script") {
+		t.Errorf("dropdown sample reaches for <script>; exclusivity must stay native: %s", sample)
 	}
 }
