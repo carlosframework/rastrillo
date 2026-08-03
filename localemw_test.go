@@ -3,6 +3,7 @@ package rastrillo
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -127,6 +128,41 @@ func TestMiddlewarePreservesRawPathWhenStrippingPrefix(t *testing.T) {
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/files/a%2Fb", nil))
 	if gotEscaped != "/files/a%2Fb" {
 		t.Errorf("unprefixed EscapedPath() = %q, want /files/a%%2Fb", gotEscaped)
+	}
+}
+
+func TestMiddlewareFallsBackCleanlyWhenTheRawLocaleBoundaryIsSmuggled(t *testing.T) {
+	// A raw path like /fr%2Fxx/files/a decodes (Path) to
+	// /fr/xx/files/a, so splitPrefix matches locale "fr" against the
+	// decoded form and trims it to /xx/files/a — but the %2F means the
+	// literal "/fr" substring in RawPath is NOT followed by a real "/":
+	// TrimPrefix(RawPath, "/fr") would strip to "%2Fxx/files/a", which
+	// has lost its leading slash while still decode-equaling the
+	// trimmed Path, so net/url's validity check would wave it through
+	// and EscapedPath/RequestURI/String would all come out
+	// non-absolute. The middleware must recognize the boundary doesn't
+	// provably line up and fall back to clearing RawPath (EscapedPath
+	// recomputes cleanly from Path) rather than carry over a
+	// mis-aligned trim.
+	l := mwLocales(t)
+	mux := http.NewServeMux()
+	var gotEscaped, gotRequestURI string
+	mux.HandleFunc("/xx/files/{rest...}", func(_ http.ResponseWriter, r *http.Request) {
+		gotEscaped = r.URL.EscapedPath()
+		gotRequestURI = r.URL.RequestURI()
+	})
+	h := l.Middleware(mux)
+
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/fr%2Fxx/files/a", nil))
+
+	if gotEscaped != "/xx/files/a" {
+		t.Errorf("EscapedPath() = %q, want /xx/files/a", gotEscaped)
+	}
+	if !strings.HasPrefix(gotEscaped, "/") {
+		t.Errorf("EscapedPath() = %q is not absolute (no leading /)", gotEscaped)
+	}
+	if !strings.HasPrefix(gotRequestURI, "/") {
+		t.Errorf("RequestURI() = %q is not absolute (no leading /)", gotRequestURI)
 	}
 }
 

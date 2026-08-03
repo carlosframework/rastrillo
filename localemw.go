@@ -57,14 +57,25 @@ func (l *Locales) Middleware(next http.Handler) http.Handler {
 			u := *r.URL
 			u.Path = rest
 			u.RawPath = ""
-			if r.URL.RawPath != "" {
-				// EscapedPath() recomputes from Path when RawPath is
-				// empty, which decodes any %2F back to a literal
-				// slash: /fr/files/a%2Fb would then route as
-				// /files/a/b (404) instead of matching the same
-				// route as the unprefixed /files/a%2Fb. Strip the
-				// locale segment from RawPath too, so both forms
-				// keep encoding the same route.
+			// EscapedPath() recomputes from Path when RawPath is empty,
+			// which decodes any %2F back to a literal slash:
+			// /fr/files/a%2Fb would then route as /files/a/b (404)
+			// instead of matching the same route as the unprefixed
+			// /files/a%2Fb. Carry the locale-stripped RawPath over
+			// instead, but only when the locale segment provably lines
+			// up in both forms — i.e. RawPath actually starts with the
+			// literal, unescaped "/"+code+"/". Otherwise the locale
+			// boundary in Path (decoded) may not be the same boundary
+			// in RawPath (still encoded): a raw path like
+			// /fr%2Fxx/files/a decodes to /fr/xx/files/a, so splitPrefix
+			// matches "fr" and trims it from Path — but TrimPrefix on
+			// the raw form would only strip "/fr", leaving "%2Fxx/..."
+			// with no leading slash. That still decode-equals the
+			// trimmed Path, so net/url's validity check passes it
+			// through, and EscapedPath/RequestURI/String all come out
+			// non-absolute. The clean lossy fallback (RawPath stays "",
+			// re-encode from Path) is correct there.
+			if strings.HasPrefix(r.URL.RawPath, "/"+code+"/") {
 				u.RawPath = strings.TrimPrefix(r.URL.RawPath, "/"+code)
 			}
 			r2.URL = &u
