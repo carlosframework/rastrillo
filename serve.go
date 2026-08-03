@@ -156,6 +156,16 @@ func openDB(path string, migrations []string) (*sql.DB, error) {
 	}
 	db.SetMaxOpenConns(1)
 
+	// database/sql's Open is lazy — it never touches the driver, so with
+	// zero migrations the file would never materialize. A hibernate
+	// route's activator starts replicating this path from boot, so a
+	// zero-migration app must still create it: Ping forces the
+	// connection open now, at boot, instead of on the first request.
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("ping: %w", err)
+	}
+
 	for i, m := range migrations {
 		if _, err := db.Exec(m); err != nil {
 			if isDuplicateColumn(err) {
