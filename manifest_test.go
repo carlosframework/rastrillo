@@ -47,6 +47,9 @@ func TestValidateRejections(t *testing.T) {
 		{"nothing declared", func(r *Resource) { r.List = List{}; r.Form = Form{} }, "at least one"},
 		{"duplicate field", func(r *Resource) { r.Form.Basics = append(r.Form.Basics, Field{Name: "Title"}) }, "duplicate"},
 		{"non-identifier field", func(r *Resource) { r.Form.Basics[0].Name = "my-field" }, "identifier"},
+		{"reserved column name Id", func(r *Resource) { r.List.Columns[1].Field = "Id" }, "reserved"},
+		{"reserved field name CreatedAt", func(r *Resource) { r.Form.Basics[0].Name = "CreatedAt" }, "reserved"},
+		{"reserved field name is case-insensitive", func(r *Resource) { r.Form.Advanced[0].Name = "updatedat" }, "reserved"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

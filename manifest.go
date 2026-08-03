@@ -186,6 +186,27 @@ func (r *Resource) Validate() error {
 		}
 	}
 
+	// Field and column names must not collide (case-insensitively) with
+	// the fixed columns every generated store adds unconditionally (id,
+	// created_at, updated_at — see internal/generate/store.go's
+	// schemaSQL): a manifest field literally named Id or CreatedAt would
+	// silently double-declare that column in the generated CREATE TABLE.
+	for _, col := range r.List.Columns {
+		if isReservedColumnName(col.Field) {
+			return fmt.Errorf("name: %q is reserved (collides with a fixed column every store emits)", col.Field)
+		}
+	}
+	for _, fld := range r.Form.Basics {
+		if isReservedColumnName(fld.Name) {
+			return fmt.Errorf("name: %q is reserved (collides with a fixed column every store emits)", fld.Name)
+		}
+	}
+	for _, fld := range r.Form.Advanced {
+		if isReservedColumnName(fld.Name) {
+			return fmt.Errorf("name: %q is reserved (collides with a fixed column every store emits)", fld.Name)
+		}
+	}
+
 	// Form fields (Basics + Advanced combined) must have no case-insensitive duplicates;
 	// columns may repeat as form fields, but the form must not have duplicates.
 	formFieldsLower := make(map[string]bool)
@@ -215,4 +236,16 @@ func (r *Resource) Validate() error {
 	}
 
 	return nil
+}
+
+// isReservedColumnName reports whether name collides case-insensitively
+// with one of the fixed columns every generated store table carries
+// unconditionally (id, created_at, updated_at).
+func isReservedColumnName(name string) bool {
+	switch strings.ToLower(name) {
+	case "id", "createdat", "updatedat":
+		return true
+	default:
+		return false
+	}
 }

@@ -1,11 +1,31 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+// repoRoot returns this repo's absolute root, computed from this
+// file's own location rather than the test's working directory — same
+// pattern as internal/generate/sqlcrun_test.go's helper of the same
+// name (each package needs its own since it's unexported).
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	root, err := filepath.Abs(filepath.Join(filepath.Dir(file), "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
 
 func scaffold(t *testing.T, files map[string]string) string {
 	t.Helper()
@@ -136,6 +156,81 @@ func TestGenerateCheckFailsOnAnUntaggedAction(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "rastrillo_actions") {
 		t.Errorf("error should name the missing tag: %v", err)
+	}
+}
+
+// notesManifestTOML declares one manifest resource, reused by the two
+// tests below that prove `rastrillo generate` actually folds a
+// manifest resource's generated actions into gen/router.go (not just
+// that internal/generate.GenerateManifests writes the right files —
+// that's covered in internal/generate/manifestgen_test.go; this is the
+// cmd-level wiring that merges its routes into the SAME router hand
+// actions get, which no other test exercises).
+const notesManifestTOML = `name  = "notes"
+route = "/admin/notes"
+
+[list]
+columns = [{ field = "Title" }]
+
+[form]
+basics = [{ name = "Title" }]
+`
+
+func TestGenerateWiresManifestActionsIntoTheRouter(t *testing.T) {
+	goMod := fmt.Sprintf("module demo\n\ngo 1.25.0\n\ntool github.com/sqlc-dev/sqlc/cmd/sqlc\n\n"+
+		"require github.com/carlosframework/rastrillo v0.0.0\n\n"+
+		"replace github.com/carlosframework/rastrillo => %s\n", repoRoot(t))
+	dir := scaffold(t, map[string]string{
+		"go.mod":               goMod,
+		"actions/index.GET.go": handleSrc,
+		"manifest/notes.toml":  notesManifestTOML,
+	})
+
+	getCmd := exec.Command("go", "get", "-tool", "github.com/sqlc-dev/sqlc/cmd/sqlc")
+	getCmd.Dir = dir
+	if out, err := getCmd.CombinedOutput(); err != nil {
+		t.Skipf("go get -tool sqlc failed (likely a network issue): %v\n%s", err, out)
+	}
+
+	if err := runGenerate([]string{dir}); err != nil {
+		t.Fatalf("runGenerate: %v", err)
+	}
+
+	routerSrc, err := os.ReadFile(filepath.Join(dir, "gen", "router.go"))
+	if err != nil {
+		t.Fatalf("expected gen/router.go: %v", err)
+	}
+	if !strings.Contains(string(routerSrc), `"GET /admin/notes"`) {
+		t.Errorf("router.go should wire the manifest resource's index.GET route, got:\n%s", routerSrc)
+	}
+	if !strings.Contains(string(routerSrc), `"POST /admin/notes"`) {
+		t.Errorf("router.go should wire the manifest resource's index.POST (create) route, got:\n%s", routerSrc)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "gen", "actions", "admin", "notes", "index_get", "index.GET.go")); err != nil {
+		t.Errorf("expected the generated index.GET action file: %v", err)
+	}
+
+	buildCmd := exec.Command("go", "build", "./...")
+	buildCmd.Dir = dir
+	if out, err := buildCmd.CombinedOutput(); err != nil {
+		t.Fatalf("go build ./... after generate: %v\n%s", err, out)
+	}
+}
+
+func TestGenerateFailsWhenAHandActionCollidesWithAManifestRoute(t *testing.T) {
+	dir := scaffold(t, map[string]string{
+		"go.mod":                           "module demo\n\ngo 1.25.0\n",
+		"actions/admin/notes/index.GET.go": handleSrc,
+		"manifest/notes.toml":              notesManifestTOML,
+	})
+
+	err := runGenerate([]string{dir})
+	if err == nil {
+		t.Fatal("want a route collision error: a hand action and the manifest resource both claim GET /admin/notes")
+	}
+	if !strings.Contains(err.Error(), "collision") {
+		t.Errorf("error should say collision: %v", err)
 	}
 }
 

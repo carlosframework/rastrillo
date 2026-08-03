@@ -129,22 +129,7 @@ func EmitActions(appRoot, genDir string, r rastrillo.Resource) (written, skipped
 		return nil, nil, err
 	}
 
-	resDir := strings.TrimPrefix(r.Route, "/")
-	idDir := resDir + "/[id]"
-
-	specs := []actionSpec{
-		{resDir, "index", "GET", actionIndexGET},
-		{resDir, "index", "POST", actionIndexPOST},
-		{resDir, "new", "GET", actionNewGET},
-		{idDir, "index", "GET", actionShowGET},
-		{idDir, "edit", "GET", actionEditGET},
-		{idDir, "edit-basics", "POST", actionEditBasicsPOST},
-	}
-	if len(r.Form.Advanced) > 0 {
-		specs = append(specs, actionSpec{idDir, "edit-advanced", "POST", actionEditAdvancedPOST})
-	}
-
-	for _, s := range specs {
+	for _, s := range actionSpecs(r) {
 		base := s.name + "." + s.method + ".go"
 		relSource := s.dir + "/" + base
 		genPath := filepath.Join(genDir, "actions", filepath.FromSlash(genDirFor(s.dir, s.name, s.method)), base)
@@ -170,6 +155,30 @@ func EmitActions(appRoot, genDir string, r rastrillo.Resource) (written, skipped
 	}
 
 	return written, skipped, nil
+}
+
+// actionSpecs enumerates the (up to) seven action files a resource
+// gets — dir/name/method plus the builder that renders each one.
+// EmitActions builds every file from exactly this list; manifestgen.go's
+// ManifestActions reads dir/name/method off the SAME list to compute
+// each file's Route and gen/ path for the router and the
+// route-collision check, so the two enumerations cannot drift apart.
+func actionSpecs(r rastrillo.Resource) []actionSpec {
+	resDir := strings.TrimPrefix(r.Route, "/")
+	idDir := resDir + "/[id]"
+
+	specs := []actionSpec{
+		{resDir, "index", "GET", actionIndexGET},
+		{resDir, "index", "POST", actionIndexPOST},
+		{resDir, "new", "GET", actionNewGET},
+		{idDir, "index", "GET", actionShowGET},
+		{idDir, "edit", "GET", actionEditGET},
+		{idDir, "edit-basics", "POST", actionEditBasicsPOST},
+	}
+	if len(r.Form.Advanced) > 0 {
+		specs = append(specs, actionSpec{idDir, "edit-advanced", "POST", actionEditAdvancedPOST})
+	}
+	return specs
 }
 
 // actionsModulePath reads the module directive from appRoot's go.mod.

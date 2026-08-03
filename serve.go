@@ -98,6 +98,17 @@ type Options struct {
 	// catalog visible instead of silently blank (§10).
 	LocaleFS fs.FS
 
+	// BaseCatalog optionally supplies a base catalog that sits UNDER
+	// every app catalog (Locales' own doc comment: requested locale's
+	// app catalog, then the default locale's app catalog, then this) —
+	// normally the generated gen/locales/locales.go var BaseCatalog a
+	// manifest resource's field labels and shared ui.* chrome strings
+	// compile to (design doc §9's manifest system; internal/generate's
+	// EmitLocales emits it from the same map as the human-readable
+	// gen/locales/en.toml, so the two cannot drift). Nil is legal — an
+	// app with no manifest resources has nothing to layer.
+	BaseCatalog Catalog
+
 	// Logger defaults to slog.Default() if nil.
 	Logger *slog.Logger
 }
@@ -189,7 +200,7 @@ func buildHandler(opts Options) (http.Handler, error) {
 	if def == "" {
 		def = opts.Locales[0]
 	}
-	loc, err := NewLocales(opts.Locales, def, nil, opts.LocaleFS)
+	loc, err := NewLocales(opts.Locales, def, opts.BaseCatalog, opts.LocaleFS)
 	if err != nil {
 		return nil, err
 	}

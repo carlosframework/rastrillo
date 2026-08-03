@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/carlosframework/rastrillo/internal/generate"
+	"github.com/carlosframework/rastrillo/internal/manifest"
 )
 
 // runGenerate implements `rastrillo generate [flags] [dir]`: the
@@ -65,6 +66,8 @@ func runGenerate(args []string) error {
 		return fmt.Errorf("%d route collision(s); build fails loudly on purpose (design doc §4)", len(collisions))
 	}
 
+	genDir := filepath.Join(dir, "gen")
+
 	if *check {
 		// Untagged action files don't break the app — plain generate
 		// tolerates them, so iterating stays smooth — but they do break
@@ -107,11 +110,18 @@ func runGenerate(args []string) error {
 			return fmt.Errorf("%d locale catalog(s) incomplete; silent fallback while iterating, loud failure before ship (design doc §10)", len(missing))
 		}
 
+		// Manifest resources (design doc §9): idempotency and
+		// hand-vs-generated route collisions, all inside a temp dir —
+		// a --check run never writes into gen/. A complete no-op when
+		// the app declares no manifest resources at all.
+		if err := generate.GenerateManifests(dir, genDir, true); err != nil {
+			return fmt.Errorf("manifest check: %w", err)
+		}
+
 		fmt.Printf("rastrillo generate --check: %d route(s), actions tagged, locale catalogs complete\n", len(actions))
 		return nil
 	}
 
-	genDir := filepath.Join(dir, "gen")
 	if err := os.RemoveAll(filepath.Join(genDir, "actions")); err != nil {
 		return fmt.Errorf("clear stale generated actions: %w", err)
 	}
@@ -121,7 +131,31 @@ func runGenerate(args []string) error {
 		}
 	}
 
-	router, err := generate.Router(module, actions)
+	// Manifest resources (design doc §9): gen/manifest.json, the sqlc
+	// store, generated templates/actions, and the locales fragment —
+	// written straight into genDir. A complete no-op when the app
+	// declares no manifest resources at all (manifests are optional,
+	// per route).
+	if err := generate.GenerateManifests(dir, genDir, false); err != nil {
+		return fmt.Errorf("generate manifests: %w", err)
+	}
+
+	// Manifest resources claim routes too (their own action files, not
+	// discovered via Discover/Rewrite — see actions.go's package doc);
+	// fold their Route/PackageName/GenDir into the same gen/router.go
+	// Router builds for hand actions, so a resource's generated actions
+	// actually get served.
+	rs, err := manifest.Load(dir, filepath.Join(dir, "manifest"))
+	if err != nil {
+		return err
+	}
+	manifestActions, err := generate.ManifestActions(rs)
+	if err != nil {
+		return err
+	}
+	allActions := append(append([]generate.Action(nil), actions...), manifestActions...)
+
+	router, err := generate.Router(module, allActions)
 	if err != nil {
 		return fmt.Errorf("render router.go: %w", err)
 	}
@@ -129,9 +163,12 @@ func runGenerate(args []string) error {
 		return err
 	}
 
-	fmt.Printf("rastrillo generate: %d route(s) wired\n", len(actions))
+	fmt.Printf("rastrillo generate: %d route(s) wired\n", len(allActions))
 	for _, a := range actions {
 		fmt.Printf("  %-24s actions/%s\n", a.Route, a.SourcePath)
+	}
+	for _, a := range manifestActions {
+		fmt.Printf("  %-24s %s\n", a.Route, a.SourcePath)
 	}
 	return nil
 }
