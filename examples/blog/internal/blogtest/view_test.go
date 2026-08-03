@@ -36,7 +36,7 @@ func TestEachPageRendersItsOwnContent(t *testing.T) {
 	wantContains(t, index, "Notes, in the order they were written.")
 	wantContains(t, post, `<article class="blog-article">`)
 	wantNotContains(t, post, "Notes, in the order they were written.")
-	wantContains(t, adminNew, `<form class="blog-form" method="post" action="/admin/posts">`)
+	wantContains(t, adminNew, `<form class="rst-form" method="post" action="/admin/posts">`)
 	wantNotContains(t, adminNew, `<article class="blog-article">`)
 }
 

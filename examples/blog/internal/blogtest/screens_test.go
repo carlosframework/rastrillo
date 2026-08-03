@@ -67,10 +67,10 @@ func allScreens(t *testing.T) map[string]string {
 	return out
 }
 
-// The acceptance criterion, made executable: all eight partials are used
+// The acceptance criterion, made executable: all stock partials are used
 // by the running app, not by a fixture. The marker strings are the ones
 // ui_test.go's own smoke test uses.
-func TestAllEightPartialsAppearAcrossTheApp(t *testing.T) {
+func TestAllStockPartialsAppearAcrossTheApp(t *testing.T) {
 	var combined strings.Builder
 	for _, html := range allScreens(t) {
 		combined.WriteString(html)
@@ -86,6 +86,10 @@ func TestAllEightPartialsAppearAcrossTheApp(t *testing.T) {
 		"status-pill":        `<span class="rst-status"`,
 		"empty-state":        `<div class="rst-empty">`,
 		"pagination":         `<nav class="rst-pagination"`,
+		"rst-form":           `<form class="rst-form"`,
+		"field-text":         `<input class="rst-input"`,
+		"field-textarea":     `<textarea class="rst-textarea"`,
+		"form-foot":          `<div class="rst-form__foot">`,
 	}
 	for name, marker := range markers {
 		if !strings.Contains(out, marker) {
@@ -182,15 +186,12 @@ func TestBlogCSSStylesNoLibraryClass(t *testing.T) {
 	}
 }
 
-// Colours and spacing come from tokens, never literals — that is the
-// whole mechanism by which these controls track the dark theme.
+// Colours come from tokens, never literals — that is the whole mechanism
+// by which these controls track the dark theme.
 func TestBlogCSSUsesTokensNotLiterals(t *testing.T) {
 	css := regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(readBlogCSS(t), "")
 	if m := regexp.MustCompile(`#[0-9a-fA-F]{3,8}\b`).FindString(css); m != "" {
 		t.Errorf("blog.css contains a literal colour %q", m)
-	}
-	if !strings.Contains(css, "var(--rst-accent)") {
-		t.Errorf("blog.css does not restate the focus ring with the accent token")
 	}
 }
 
