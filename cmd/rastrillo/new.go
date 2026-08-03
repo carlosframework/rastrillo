@@ -85,7 +85,6 @@ func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
 const mainTemplate = `package main
 
 import (
-	"flag"
 	"log/slog"
 	"net/http"
 	"os"
@@ -96,12 +95,6 @@ import (
 )
 
 func main() {
-	// -socket/-addr mirror the platform's activation contract (a
-	// systemd-activated listener wins over either — see rastrillo.Serve).
-	socket := flag.String("socket", "", "unix socket to listen on")
-	addr := flag.String("addr", "", "TCP host:port to listen on")
-	flag.Parse()
-
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	// A single shared Ctx for now: this app has no per-request state
@@ -110,10 +103,11 @@ func main() {
 	ctx := &rastrillo.Ctx{Logger: logger}
 	mux := gen.Router(func(*http.Request) *rastrillo.Ctx { return ctx })
 
-	if err := rastrillo.Serve(rastrillo.Options{
+	// Run speaks the platform's activation contract: -socket/-addr/-db
+	// flags for agent exec children, or a bare "serve" subcommand for
+	// carlos-app@ unit tenants (see rastrillo.Run).
+	if err := rastrillo.Run(rastrillo.Options{
 		Mux:    mux,
-		Socket: *socket,
-		Addr:   *addr,
 		Logger: logger,
 	}); err != nil {
 		logger.Error("serve failed", "err", err)
