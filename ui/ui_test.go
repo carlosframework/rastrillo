@@ -493,7 +493,7 @@ func allPartials() []struct {
 		{"list-search-submit", map[string]any{"Label": "Search posts"}},
 		{"list-row-action", map[string]any{
 			"Href": "/posts/1", "Main": "Release notes, August",
-			"Sub": "Published 2 August · 4 min read",
+			"Sub":        "Published 2 August · 4 min read",
 			"ActionHref": "/posts/1/edit", "ActionLabel": "Edit",
 			"ActionAria": "Edit Release notes, August",
 			"Lead":       "accent", "LeadInitial": "RN",
@@ -502,7 +502,7 @@ func allPartials() []struct {
 		{"empty-state", map[string]any{
 			"Title": "Nothing here yet", "Body": "No posts yet. Your first one is a good place to start.",
 			"PostAction": "/posts/seed", "ActionLabel": "Add sample posts",
-			"Hidden":     [][2]string{{"csrf", "tok-123"}},
+			"Hidden": [][2]string{{"csrf", "tok-123"}},
 		}},
 		{"pagination", map[string]any{
 			"Label": "Pagination",
