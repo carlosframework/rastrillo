@@ -55,10 +55,9 @@ func TestIndexSecondPageShowsTheEleventhPost(t *testing.T) {
 	wantNotContains(t, second.Body.String(), "Post 11")
 }
 
-// GET / is a prefix pattern, so the index action answers every unmatched
-// GET and has to guard the path itself (friction finding F6). The
-// trailing-slash cases land there too: none of this app's routes is
-// registered with a trailing slash, so Go's mux never redirects to one.
+// The generator anchors the root index to GET /{$}, so unmatched GETs
+// — including the trailing-slash forms, which no route registers —
+// fall to the mux's own 404 (F6).
 func TestUnmatchedGETsAre404NotTheHomepage(t *testing.T) {
 	app, db := newApp(t)
 	seed(t, db, "Published", "Body.", true)
