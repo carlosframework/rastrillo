@@ -23,6 +23,11 @@
 // (binding, recorded in the plan's self-review): list-bar renders
 // Search only — no Filter key — because a manifest's `filter` entry
 // validates but declares no enumerable values for a dropdown yet.
+// list-bar itself is gated on r.List.Search at GENERATION time (not a
+// runtime {{if}}, same discipline as form.html's Advanced-form gate
+// below): a search=false resource's list.html contains no list-bar at
+// all, so it never shows a search box the store's WHERE clause (which
+// only honors `q` when List.Search is true) would silently ignore.
 //
 // show.html and form.html have no golden in the plan; this emitter
 // pins their contracts (each file's own DO-NOT-EDIT comment restates
@@ -149,7 +154,9 @@ func listHTML(r rastrillo.Resource) []byte {
 		resourceKey(r.Name, "empty.title"), resourceKey(r.Name, "empty.body"), newHref)
 	b.WriteString("{{else}}\n")
 	b.WriteString("<div class=\"rst-list\">\n")
-	fmt.Fprintf(&b, "{{template \"list-bar\" dict \"SearchAction\" %q \"Query\" .Query \"Placeholder\" (T \"ui.search\") \"Hidden\" .Carry}}\n", r.Route)
+	if r.List.Search {
+		fmt.Fprintf(&b, "{{template \"list-bar\" dict \"SearchAction\" %q \"Query\" .Query \"Placeholder\" (T \"ui.search\") \"Hidden\" .Carry}}\n", r.Route)
+	}
 	b.WriteString("{{range .Rows}}{{template \"list-row-action\" dict \"Href\" .Href \"Main\" .Main \"Sub\" .Sub}}\n")
 	b.WriteString("{{end}}\n")
 	b.WriteString("</div>\n")
