@@ -12,7 +12,7 @@ This is a first pass, built overnight to prove the core loop end to end
 rather than to cover the full design. **Built:**
 
 - **`rastrillo new <name>`** — scaffolds a Go app: `go.mod`, one starter
-  action, a `main.go` wiring `rastrillo.Serve`. Runs generate once so
+  action, a `main.go` wiring `rastrillo.Run`. Runs generate once so
   `go build` works immediately.
 - **`rastrillo generate [dir]`** — the filesystem-routing generator
   (design doc §4): walks `actions/`, emits `gen/router.go` on a Go 1.22
@@ -27,17 +27,24 @@ rather than to cover the full design. **Built:**
   `rastrillo new` layout: exactly one directory under `cmd/`. Useful for
   rapid iteration: edits to `actions/` require regeneration (the binary
   uses generated code under `gen/`), and `dev` does that automatically.
+- **`rastrillo.Run`** — the process entrypoint the scaffold wires up: it
+  resolves whichever of the platform's two activation argv shapes the
+  binary was invoked with — `-socket`/`-addr`/`-db` flags for an agent
+  exec child (hibernate routes), or a bare `serve` subcommand with no
+  flags for a `carlos-app@.service` unit tenant — then calls `Serve`. A
+  relative `-db`/`Options.DBPath` is resolved inside `$STATE_DIRECTORY`
+  when systemd provides one, since a unit tenant's cwd isn't its state
+  dir. Hibernation requires nothing else from the app: the activator
+  owns the restore/replicate cycle, and `Serve`'s SIGTERM drain fits
+  inside its SIGKILL budget.
 - **`rastrillo.Serve`** — the bootstrap (design doc §5): the SQLite
   pragma-ordering fix, `SetMaxOpenConns(1)`, additive migrations; the
-  platform's activation contract (`-socket`/`-addr`/systemd
+  platform's activation contract (`Options.Socket`/`Options.Addr`/systemd
   `LISTEN_FDS`, matching `carlosframework/platform`'s `testdata/echoapp`
   exactly); `GET /healthz` and `GET /api/version` answered automatically.
-  **Covers only the plain "always-on instance" route kind** — a real
-  gap found deploying hello world for real (below): the platform's
-  hibernating instances also expect a `-db` flag (for the activator's
-  restore/checkpoint cycle), and its `-backing unit` systemd tenants
-  expect a `serve` subcommand plus inherited `LISTEN_FDS` socket
-  activation, neither of which `rastrillo.Serve` implements yet.
+  Between `Serve` and `Run`, the activation contract is covered end to
+  end: every route kind the platform runs — always-on instance,
+  hibernating exec child, unit tenant — boots the same scaffolded app.
 - **`examples/helloworld`** — a real scaffolded app, checked in, proven
   to ship/promote/serve through the actual `carlos` binary — see
   [`hack/local-deploy-demo.sh`](hack/local-deploy-demo.sh).
@@ -95,8 +102,10 @@ platform-dev environment: a real S3-backed deployment bucket, a real
 demo above. See `carlosframework/platform`'s
 `docs/superpowers/specs/2026-08-02-platform-dev-environment-design.md`.
 Routed as a plain always-on instance via a hand-written systemd unit
-(matching the flagship's `console.service` precedent), since this app
-predates `-hibernate`/`-backing unit` support noted above. App hostnames
+(matching the flagship's `console.service` precedent): `rastrillo.Run`
+and its hibernate/unit-tenant support landed 2026-08-03, after this
+deploy, so the live instance still runs the older hand-wired
+`-socket`/`-addr` `main.go`, not `Run`. App hostnames
 live under `oncarlos.com`, not `carlosframework.com` — that's reserved
 for platform surfaces, e.g. the dev console itself at
 [`https://platform.dev.carlosframework.com`](https://platform.dev.carlosframework.com)

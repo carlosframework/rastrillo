@@ -9,7 +9,7 @@ import (
 )
 
 // runNew implements `rastrillo new <name>`: go.mod, one starter action,
-// a main.go wiring Serve to the (not-yet-generated) router, then runs
+// a main.go wiring Run to the (not-yet-generated) router, then runs
 // generate once so `go build` works immediately (design doc §11).
 //
 // The starter is a plain hand-written action, not a Resource/TOML
@@ -93,7 +93,6 @@ func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
 const mainTemplate = `package main
 
 import (
-	"flag"
 	"log/slog"
 	"net/http"
 	"os"
@@ -104,12 +103,6 @@ import (
 )
 
 func main() {
-	// -socket/-addr mirror the platform's activation contract (a
-	// systemd-activated listener wins over either — see rastrillo.Serve).
-	socket := flag.String("socket", "", "unix socket to listen on")
-	addr := flag.String("addr", "", "TCP host:port to listen on")
-	flag.Parse()
-
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	// A single shared Ctx for now: this app has no per-request state
@@ -118,16 +111,17 @@ func main() {
 	ctx := &rastrillo.Ctx{Logger: logger}
 	mux := gen.Router(func(*http.Request) *rastrillo.Ctx { return ctx })
 
-	// The app serves its own static files — rastrillo.Serve never does.
+	// The app serves its own static files — the framework never does.
 	// static/tokens.css was scaffolded here once by rastrillo new; edit
 	// it, replace it, or delete this handler if you serve assets some
 	// other way.
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
-	if err := rastrillo.Serve(rastrillo.Options{
+	// Run speaks the platform's activation contract: -socket/-addr/-db
+	// flags for agent exec children, or a bare "serve" subcommand for
+	// carlos-app@ unit tenants (see rastrillo.Run).
+	if err := rastrillo.Run(rastrillo.Options{
 		Mux:    mux,
-		Socket: *socket,
-		Addr:   *addr,
 		Logger: logger,
 	}); err != nil {
 		logger.Error("serve failed", "err", err)
