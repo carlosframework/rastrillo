@@ -129,10 +129,10 @@ func TestEditFormResolvesTheStatusPillPair(t *testing.T) {
 }
 
 func TestPaginationIsHiddenAtOnePageAndShownBeyondIt(t *testing.T) {
-	if got := blog.BuildPagination("/admin/posts", "", 1, 10); got.Show {
+	if got := blog.BuildPagination("/admin/posts", "", "", 1, 10); got.Show {
 		t.Errorf("ten posts is one page; the strip must stay away")
 	}
-	got := blog.BuildPagination("/admin/posts", "", 1, 11)
+	got := blog.BuildPagination("/admin/posts", "", "", 1, 11)
 	if !got.Show {
 		t.Fatalf("eleven posts is two pages; the strip must appear")
 	}
@@ -153,7 +153,7 @@ func TestPaginationIsHiddenAtOnePageAndShownBeyondIt(t *testing.T) {
 }
 
 func TestPaginationCarriesTheQueryAndDisablesNextOnTheLastPage(t *testing.T) {
-	got := blog.BuildPagination("/admin/posts", "go", 2, 11)
+	got := blog.BuildPagination("/admin/posts", "go", "", 2, 11)
 	if got.Items[0] != (blog.PageItem{Label: "Previous", Href: "/admin/posts?q=go&page=1"}) {
 		t.Errorf("Previous = %+v", got.Items[0])
 	}
@@ -166,7 +166,7 @@ func TestPaginationCarriesTheQueryAndDisablesNextOnTheLastPage(t *testing.T) {
 // A gap needs 71 posts to appear, so the app builds it correctly and
 // never renders it — the library's own fixtures cover that item kind.
 func TestPaginationWindowsWithGapsPastSevenPages(t *testing.T) {
-	got := blog.BuildPagination("/", "", 5, 100) // ten pages
+	got := blog.BuildPagination("/", "", "", 5, 100) // ten pages
 	var labels []string
 	gaps := 0
 	for _, item := range got.Items {

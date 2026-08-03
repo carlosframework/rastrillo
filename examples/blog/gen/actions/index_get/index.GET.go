@@ -34,6 +34,6 @@ func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
 	blog.Render(ctx, w, "index", http.StatusOK, blog.HomeView{
 		Head:       blog.Head{Title: "The blog"},
 		Rows:       blog.PublicRows(posts),
-		Pagination: blog.BuildPagination("/", "", page, total),
+		Pagination: blog.BuildPagination("/", "", "", page, total),
 	})
 }
