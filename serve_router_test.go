@@ -24,6 +24,30 @@ func TestServeRequiresExactlyOneOfMuxAndRouter(t *testing.T) {
 	}
 }
 
+// Pins the wiring order inside Serve itself, not just buildMux in
+// isolation: the database must be open — file materialized, migrations
+// applied — before Router runs, so an app can rely on the handle Router
+// receives instead of racing its own open against Serve's. Returning an
+// error from Router aborts Serve before it ever calls listen, so this
+// never binds a socket.
+func TestServeOpensTheDatabaseBeforeRouter(t *testing.T) {
+	var got *sql.DB
+	path := filepath.Join(t.TempDir(), "x.db")
+	err := Serve(Options{DBPath: path, Router: func(d *sql.DB) (*http.ServeMux, error) {
+		got = d
+		return nil, errors.New("stop")
+	}})
+	if err == nil {
+		t.Fatal("Serve ignored the Router error")
+	}
+	if got == nil {
+		t.Error("Router ran before the database opened")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("db not materialized before Router: %v", err)
+	}
+}
+
 func TestBuildMuxCallsRouterWithTheHandle(t *testing.T) {
 	db, err := OpenDB(filepath.Join(t.TempDir(), "x.db"), nil)
 	if err != nil {
