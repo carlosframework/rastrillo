@@ -198,6 +198,16 @@ func TestGenerateManifestsCheckFailsWhenNeverGenerated(t *testing.T) {
 	}
 }
 
+const handIndexGETSrc = "//go:build rastrillo_actions\n\npackage actions\n\nimport (\n\t\"net/http\"\n\n\t\"github.com/carlosframework/rastrillo\"\n)\n\nfunc Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {}\n"
+
+// TestGenerateManifestsFailsOnRouteCollisionWithAHandAction covers the
+// genuine collision case: a hand action at a DIFFERENT actions/ path
+// (dir "admin", name "notes", method GET — routeFor's own convention:
+// no bracket/index tricks, just the plain "admin/notes.GET.go" shape)
+// that computes to the identical route the manifest's own index.GET
+// spec claims ("GET /admin/notes"). This must fail loudly — it is NOT
+// the file-level-skip case (see the sibling test below), because the
+// two files are not the same conventional path.
 func TestGenerateManifestsFailsOnRouteCollisionWithAHandAction(t *testing.T) {
 	root := newScratchModule(t, false)
 	if err := os.MkdirAll(filepath.Join(root, "manifest"), 0o755); err != nil {
@@ -207,13 +217,10 @@ func TestGenerateManifestsFailsOnRouteCollisionWithAHandAction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A hand action claiming the exact route the manifest's own
-	// generated index.GET would claim (GET /admin/notes).
-	if err := os.MkdirAll(filepath.Join(root, "actions", "admin", "notes"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "actions", "admin"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	handSrc := "//go:build rastrillo_actions\n\npackage actions\n\nimport (\n\t\"net/http\"\n\n\t\"github.com/carlosframework/rastrillo\"\n)\n\nfunc Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {}\n"
-	if err := os.WriteFile(filepath.Join(root, "actions", "admin", "notes", "index.GET.go"), []byte(handSrc), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "actions", "admin", "notes.GET.go"), []byte(handIndexGETSrc), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -228,11 +235,80 @@ func TestGenerateManifestsFailsOnRouteCollisionWithAHandAction(t *testing.T) {
 	if !strings.Contains(err.Error(), "collision") {
 		t.Errorf("error should say collision: %v", err)
 	}
-	if !strings.Contains(err.Error(), "actions/admin/notes/index.GET.go") {
+	if !strings.Contains(err.Error(), "actions/admin/notes.GET.go") {
 		t.Errorf("error should name the hand action file: %v", err)
 	}
 	if !strings.Contains(err.Error(), "manifest:notes") {
 		t.Errorf("error should name the manifest resource: %v", err)
+	}
+}
+
+// TestGenerateManifestsAllowsAHandFileAtTheExactGeneratedPath covers
+// the OTHER file-level rule (design doc §4, restated in actions.go's
+// EmitActions doc comment): a hand file sitting at the EXACT
+// conventional path EmitActions would also compute for a resource's
+// action ("admin/notes/index.GET.go" — the same path
+// Discover/EmitActions both derive from dir="admin/notes", name=
+// "index", method="GET") is an ALLOWED override, not a collision —
+// Task 10 (blog adoption) explicitly relies on this to keep a
+// hand-written list action next to an otherwise-generated resource.
+func TestGenerateManifestsAllowsAHandFileAtTheExactGeneratedPath(t *testing.T) {
+	root := newScratchModule(t, false)
+	if err := os.MkdirAll(filepath.Join(root, "manifest"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "manifest", "notes.toml"), []byte(notesManifestTOML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(root, "actions", "admin", "notes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "actions", "admin", "notes", "index.GET.go"), []byte(handIndexGETSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rs, err := manifest.Load(root, filepath.Join(root, "manifest"))
+	if err != nil {
+		t.Fatalf("manifest.Load: %v", err)
+	}
+	genDir := filepath.Join(root, "gen")
+	// Seed genDir the check-only way (runSqlc: false) so this test
+	// never needs the real sqlc tool — it's routeCollisions/
+	// ManifestActions this test is exercising, not the emitters.
+	if _, err := emitPipeline(root, genDir, rs, false); err != nil {
+		t.Fatalf("seed emitPipeline: %v", err)
+	}
+
+	if err := GenerateManifests(root, genDir, true); err != nil {
+		t.Errorf("a hand file at the exact generated path must be an allowed override, not a collision: %v", err)
+	}
+
+	// EmitActions must have skipped writing its own index.GET at that
+	// path — the hand file is untouched and still the only content
+	// there.
+	got, err := os.ReadFile(filepath.Join(root, "actions", "admin", "notes", "index.GET.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != handIndexGETSrc {
+		t.Error("the hand action file must be left untouched")
+	}
+	if _, err := os.Stat(filepath.Join(genDir, "actions", "admin", "notes", "index_get", "index.GET.go")); !os.IsNotExist(err) {
+		t.Errorf("EmitActions must not have written its own index.GET when a hand file occupies that exact path, got: %v", err)
+	}
+
+	// And ManifestActions itself must not have produced a router entry
+	// for the skipped spec (nothing was written at its GenDir for a
+	// router to import).
+	manifestActions, err := ManifestActions(filepath.Join(root, "actions"), rs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range manifestActions {
+		if a.Route == "GET /admin/notes" {
+			t.Errorf("ManifestActions should have excluded the hand-overridden index.GET spec, got: %+v", a)
+		}
 	}
 }
 

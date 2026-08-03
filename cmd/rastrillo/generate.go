@@ -144,13 +144,22 @@ func runGenerate(args []string) error {
 	// discovered via Discover/Rewrite — see actions.go's package doc);
 	// fold their Route/PackageName/GenDir into the same gen/router.go
 	// Router builds for hand actions, so a resource's generated actions
-	// actually get served.
-	rs, err := manifest.Load(dir, filepath.Join(dir, "manifest"))
-	if err != nil {
-		return err
-	}
-	manifestActions, err := generate.ManifestActions(rs)
-	if err != nil {
+	// actually get served. GenerateManifests already loaded and
+	// validated the manifest set above; a manifest-less app (the
+	// common case — every pre-manifest app has no manifest/ directory
+	// at all) skips this second Load entirely rather than paying for
+	// another goEval `go run` on every generate.
+	var manifestActions []generate.Action
+	if _, err := os.Stat(filepath.Join(dir, "manifest")); err == nil {
+		rs, err := manifest.Load(dir, filepath.Join(dir, "manifest"))
+		if err != nil {
+			return err
+		}
+		manifestActions, err = generate.ManifestActions(actionsDir, rs)
+		if err != nil {
+			return err
+		}
+	} else if !os.IsNotExist(err) {
 		return err
 	}
 	allActions := append(append([]generate.Action(nil), actions...), manifestActions...)

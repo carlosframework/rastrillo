@@ -218,11 +218,19 @@ func TestGenerateWiresManifestActionsIntoTheRouter(t *testing.T) {
 	}
 }
 
+// TestGenerateFailsWhenAHandActionCollidesWithAManifestRoute uses a
+// hand action at a path DIFFERENT from the manifest resource's own
+// conventional one ("admin/notes.GET.go", not "admin/notes/index.GET.go")
+// that still computes to the identical route "GET /admin/notes" — the
+// genuine collision case. A hand file at the exact conventional path
+// is instead an allowed override (see internal/generate/manifestgen_test.go's
+// TestGenerateManifestsAllowsAHandFileAtTheExactGeneratedPath); this
+// test must not confuse the two.
 func TestGenerateFailsWhenAHandActionCollidesWithAManifestRoute(t *testing.T) {
 	dir := scaffold(t, map[string]string{
-		"go.mod":                           "module demo\n\ngo 1.25.0\n",
-		"actions/admin/notes/index.GET.go": handleSrc,
-		"manifest/notes.toml":              notesManifestTOML,
+		"go.mod":                     "module demo\n\ngo 1.25.0\n",
+		"actions/admin/notes.GET.go": handleSrc,
+		"manifest/notes.toml":        notesManifestTOML,
 	})
 
 	err := runGenerate([]string{dir})
@@ -231,6 +239,64 @@ func TestGenerateFailsWhenAHandActionCollidesWithAManifestRoute(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "collision") {
 		t.Errorf("error should say collision: %v", err)
+	}
+}
+
+// TestGenerateKeepsAHandActionAtTheExactGeneratedPath is Task 10's own
+// adoption shape end to end: a hand-written index.GET kept at the
+// manifest resource's exact conventional path (its own custom list,
+// the plan's example) must build and wire successfully — no route
+// collision, and the router must dispatch that route to the HAND
+// action's package, not a manifest one (EmitActions skipped writing
+// its own copy there).
+func TestGenerateKeepsAHandActionAtTheExactGeneratedPath(t *testing.T) {
+	goMod := fmt.Sprintf("module demo\n\ngo 1.25.0\n\ntool github.com/sqlc-dev/sqlc/cmd/sqlc\n\n"+
+		"require github.com/carlosframework/rastrillo v0.0.0\n\n"+
+		"replace github.com/carlosframework/rastrillo => %s\n", repoRoot(t))
+	dir := scaffold(t, map[string]string{
+		"go.mod":                           goMod,
+		"actions/admin/notes/index.GET.go": handleSrc,
+		"manifest/notes.toml":              notesManifestTOML,
+	})
+
+	getCmd := exec.Command("go", "get", "-tool", "github.com/sqlc-dev/sqlc/cmd/sqlc")
+	getCmd.Dir = dir
+	if out, err := getCmd.CombinedOutput(); err != nil {
+		t.Skipf("go get -tool sqlc failed (likely a network issue): %v\n%s", err, out)
+	}
+
+	if err := runGenerate([]string{dir}); err != nil {
+		t.Fatalf("runGenerate: %v", err)
+	}
+
+	// The hand action's OWN dir/name/method ("admin/notes","index","GET")
+	// is identical to the manifest resource's index.GET spec, so
+	// Rewrite (a completely separate mechanism, for hand actions) and
+	// EmitActions compute the exact same gen/ path for it — Rewrite
+	// gets there first and EmitActions' file-level skip means it never
+	// overwrites that content with its own. Assert on WHICH content
+	// occupies that path (the hand-rewritten package, not a
+	// manifest-generated one), not on the path being empty.
+	genActionSrc, err := os.ReadFile(filepath.Join(dir, "gen", "actions", "admin", "notes", "index_get", "index.GET.go"))
+	if err != nil {
+		t.Fatalf("expected the hand-rewritten action at that path: %v", err)
+	}
+	if !strings.Contains(string(genActionSrc), "package act_admin_notes_index_get") {
+		t.Errorf("expected the hand action's own rewritten package there, got:\n%s", genActionSrc)
+	}
+
+	routerSrc, err := os.ReadFile(filepath.Join(dir, "gen", "router.go"))
+	if err != nil {
+		t.Fatalf("expected gen/router.go: %v", err)
+	}
+	if !strings.Contains(string(routerSrc), `"GET /admin/notes"`) {
+		t.Errorf("router.go should still wire GET /admin/notes (to the hand action), got:\n%s", routerSrc)
+	}
+
+	buildCmd := exec.Command("go", "build", "./...")
+	buildCmd.Dir = dir
+	if out, err := buildCmd.CombinedOutput(); err != nil {
+		t.Fatalf("go build ./... after generate: %v\n%s", err, out)
 	}
 }
 

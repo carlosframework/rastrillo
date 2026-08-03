@@ -140,19 +140,27 @@ func emitPipeline(moduleRoot, genDir string, rs []rastrillo.Resource, runSqlc bo
 	return written, nil
 }
 
-// ManifestActions synthesizes the Action entries each resource's
-// generated files claim: the same Route/PackageName/GenDir EmitActions
-// itself computes (via the shared actionSpecs, so the two enumerations
-// cannot drift apart). cmd/rastrillo/generate.go folds these into the
-// same gen/router.go Router already builds for hand actions, and
-// routeCollisions folds them into the same route-collision check
-// Discover already runs across hand actions (design doc §4: "build
-// fails loudly on any collision" — extended here to a hand action and
-// a manifest resource claiming the identical route). SourcePath is a
-// label, not a real actions/ file — used only to name the resource in
-// a collision message or a route listing.
-func ManifestActions(rs []rastrillo.Resource) ([]Action, error) {
-	var out []Action
+// manifestRoute is one resource action spec's computed identity: the
+// exact actions/-relative path EmitActions would also use for that
+// same file (relSource — the path a hand file must occupy for
+// EmitActions' own file-level skip to apply, see its doc comment),
+// its route, and the Route/PackageName/GenDir a router entry needs.
+type manifestRoute struct {
+	resourceName string
+	relSource    string // e.g. "admin/notes/index.GET.go" — same shape Discover's Action.SourcePath uses
+	route        string
+	packageName  string
+	genDir       string
+}
+
+// manifestRoutes enumerates every resource's up-to-seven action specs
+// via the shared actionSpecs (so this list and EmitActions' own cannot
+// drift apart) and computes each one's route/relSource/packageName/
+// genDir. It does not consider hand files at all — ManifestActions and
+// routeCollisions each apply the file-level-skip exemption on top of
+// this raw list for their own purposes.
+func manifestRoutes(rs []rastrillo.Resource) ([]manifestRoute, error) {
+	var out []manifestRoute
 	for _, r := range rs {
 		for _, s := range actionSpecs(r) {
 			route, err := routeFor(s.dir, s.name, s.method)
@@ -161,49 +169,113 @@ func ManifestActions(rs []rastrillo.Resource) ([]Action, error) {
 			}
 			base := s.name + "." + s.method + ".go"
 			relSource := s.dir + "/" + base
-			out = append(out, Action{
-				SourcePath:  fmt.Sprintf("manifest:%s (%s)", r.Name, relSource),
-				Method:      s.method,
-				Route:       route,
-				PackageName: packageNameFor(relSource),
-				GenDir:      genDirFor(s.dir, s.name, s.method),
+			out = append(out, manifestRoute{
+				resourceName: r.Name,
+				relSource:    relSource,
+				route:        route,
+				packageName:  packageNameFor(relSource),
+				genDir:       genDirFor(s.dir, s.name, s.method),
 			})
 		}
 	}
 	return out, nil
 }
 
-// routeCollisions merges the app's hand-written actions/ discoveries
-// (if actionsDir exists at all — a manifest-only app may have none)
-// with the routes each resource's own action emitter will produce, and
-// reports any route claimed by more than one source. Reuses Discover's
-// own Collision type and byRoute grouping, so a hand-vs-manifest
-// collision prints exactly the same shape as a hand-vs-hand one.
-func routeCollisions(actionsDir string, rs []rastrillo.Resource) ([]Collision, error) {
-	var all []Action
-	if _, err := os.Stat(actionsDir); err == nil {
-		hand, _, err := Discover(actionsDir)
-		if err != nil {
-			return nil, err
+// handRelSources returns the actions/-relative paths (Action.SourcePath's
+// own shape) of every hand-written action file under actionsDir, or nil
+// without error when actionsDir doesn't exist at all (a manifest-only
+// app may have none).
+func handRelSources(actionsDir string) (map[string]bool, error) {
+	if _, err := os.Stat(actionsDir); os.IsNotExist(err) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	hand, _, err := Discover(actionsDir)
+	if err != nil {
+		return nil, err
+	}
+	set := make(map[string]bool, len(hand))
+	for _, a := range hand {
+		set[a.SourcePath] = true
+	}
+	return set, nil
+}
+
+// ManifestActions synthesizes the Action entries each resource's
+// generated files claim, for every spec EXCEPT one whose exact
+// conventional relSource is already occupied by a hand file — the
+// design doc §4 file-level rule EmitActions itself implements ("a
+// hand-written actions/<same path> file already present under appRoot
+// skips generating that one file"). Excluding it here too matters, not
+// just cosmetically: EmitActions never writes anything at that spec's
+// GenDir, so a router entry pointing there would import a package that
+// doesn't exist; the app's own hand action (already in Discover's own
+// result) is what actually serves that route. cmd/rastrillo/generate.go
+// folds the result into the same gen/router.go Router already builds
+// for hand actions; routeCollisions folds it into the same
+// route-collision check Discover already runs across hand actions.
+// SourcePath is a label, not a real actions/ file — used only to name
+// the resource in a collision message or a route listing.
+func ManifestActions(actionsDir string, rs []rastrillo.Resource) ([]Action, error) {
+	skip, err := handRelSources(actionsDir)
+	if err != nil {
+		return nil, err
+	}
+	routes, err := manifestRoutes(rs)
+	if err != nil {
+		return nil, err
+	}
+
+	var out []Action
+	for _, mr := range routes {
+		if skip[mr.relSource] {
+			continue
 		}
-		for _, a := range hand {
-			a.SourcePath = "actions/" + a.SourcePath
-			all = append(all, a)
+		out = append(out, Action{
+			SourcePath:  fmt.Sprintf("manifest:%s (%s)", mr.resourceName, mr.relSource),
+			Route:       mr.route,
+			PackageName: mr.packageName,
+			GenDir:      mr.genDir,
+		})
+	}
+	return out, nil
+}
+
+// routeCollisions merges the app's hand-written actions/ discoveries
+// (if actionsDir exists at all) with the routes each resource's own
+// action emitter will produce — EXCLUDING any spec ManifestActions
+// itself excludes (the file-level-skip case: same computed FILE path
+// hand vs generated is an allowed override, design doc §4, not a
+// collision) — and reports any route claimed by more than one
+// remaining source. Reuses Discover's own Collision type and byRoute
+// grouping, so a hand-vs-manifest collision prints exactly the same
+// shape as a hand-vs-hand one.
+func routeCollisions(actionsDir string, rs []rastrillo.Resource) ([]Collision, error) {
+	var hand []Action
+	if _, err := os.Stat(actionsDir); err == nil {
+		var derr error
+		hand, _, derr = Discover(actionsDir)
+		if derr != nil {
+			return nil, derr
 		}
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
 
-	manifestActions, err := ManifestActions(rs)
+	manifestActions, err := ManifestActions(actionsDir, rs)
 	if err != nil {
 		return nil, err
 	}
-	all = append(all, manifestActions...)
 
 	byRoute := map[string][]string{}
-	for _, a := range all {
+	for _, a := range hand {
+		byRoute[a.Route] = append(byRoute[a.Route], "actions/"+a.SourcePath)
+	}
+	for _, a := range manifestActions {
 		byRoute[a.Route] = append(byRoute[a.Route], a.SourcePath)
 	}
+
 	var collisions []Collision
 	for route, sources := range byRoute {
 		if len(sources) > 1 {
