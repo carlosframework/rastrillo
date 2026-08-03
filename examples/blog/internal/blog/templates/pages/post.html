@@ -1,0 +1,6 @@
+{{define "content"}}
+{{template "page-header" dict "Title" .Title "Sub" .Date}}
+<article class="blog-article">
+{{range .Paragraphs}}<p>{{.}}</p>
+{{end}}</article>
+{{end}}

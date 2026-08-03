@@ -1,0 +1,129 @@
+package blogtest
+
+import (
+	"fmt"
+	"net/http"
+	"strings"
+	"testing"
+)
+
+func TestAdminListShowsDraftsAndPublished(t *testing.T) {
+	app, db := newApp(t)
+	seed(t, db, "A draft", "Body.", false)
+	seed(t, db, "Live post", "Body.", true)
+
+	rec := get(t, app, "/admin/posts")
+	wantStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+
+	wantContains(t, body, "A draft")
+	wantContains(t, body, "Live post")
+	// Status rides in the row's Sub as prose: the stock row has no status
+	// slot (friction finding F1).
+	wantContains(t, body, "Draft · edited")
+	wantContains(t, body, "Published ")
+	// The published row gets a pill; the draft, having no public page, does not.
+	if n := strings.Count(body, `class="rst-row__action"`); n != 1 {
+		t.Errorf("%d action pills, want exactly 1 (the published row)", n)
+	}
+}
+
+func TestAdminSearchFiltersByTitleCaseInsensitively(t *testing.T) {
+	app, db := newApp(t)
+	seed(t, db, "Going to production", "Body.", true)
+	seed(t, db, "Unrelated", "Body.", true)
+
+	rec := get(t, app, "/admin/posts?q=GOING")
+	wantStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+
+	wantContains(t, body, "Going to production")
+	wantNotContains(t, body, "Unrelated")
+	// The search field echoes the query back, so a search survives paging.
+	wantContains(t, body, `value="GOING"`)
+}
+
+// A search that matches nothing is not an empty state: a dashed
+// blank-state card telling a writer with forty posts that their blog is
+// empty is a lie the component would happily tell.
+func TestAdminSearchWithNoMatchRendersANoteNotTheEmptyState(t *testing.T) {
+	app, db := newApp(t)
+	seed(t, db, "Going to production", "Body.", true)
+
+	rec := get(t, app, "/admin/posts?q=zzz")
+	wantStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+
+	wantContains(t, body, `<p class="blog-note">`)
+	wantContains(t, body, "No posts match")
+	wantNotContains(t, body, `<div class="rst-empty">`)
+}
+
+func TestAdminWithNoPostsRendersTheEmptyStateNotTheNote(t *testing.T) {
+	app, _ := newApp(t)
+
+	rec := get(t, app, "/admin/posts")
+	wantStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+
+	wantContains(t, body, `<div class="rst-empty">`)
+	wantContains(t, body, "No posts yet")
+	wantContains(t, body, "Write your first post")
+	wantNotContains(t, body, `<p class="blog-note">`)
+}
+
+func TestAdminPaginationAppearsOnlyPastOnePage(t *testing.T) {
+	app, db := newApp(t)
+	for i := 1; i <= 10; i++ {
+		seed(t, db, fmt.Sprintf("Post %02d", i), "Body.", false)
+	}
+
+	ten := get(t, app, "/admin/posts")
+	wantStatus(t, ten, http.StatusOK)
+	// The partial emits its <nav> even with no items, so an unguarded call
+	// would leave an empty landmark on every single-page list.
+	wantNotContains(t, ten.Body.String(), `<nav class="rst-pagination"`)
+
+	seed(t, db, "Post 11", "Body.", false)
+
+	eleven := get(t, app, "/admin/posts")
+	wantStatus(t, eleven, http.StatusOK)
+	body := eleven.Body.String()
+	wantContains(t, body, `<nav class="rst-pagination"`)
+	wantContains(t, body, `<span aria-current="page">1</span>`)
+	wantContains(t, body, `<a href="/admin/posts?page=2">2</a>`)
+	// Previous is present but not actionable on page 1.
+	wantContains(t, body, `<span>Previous</span>`)
+}
+
+// html/template escapes & inside an attribute value, so the preserved
+// query looks like q=go&amp;page=2 in the source. The rendered page is
+// correct either way — a browser unescapes it — but a test asserting the
+// raw ampersand fails against working output.
+func TestAdminPaginationCarriesTheQueryIntoEveryPageLink(t *testing.T) {
+	app, db := newApp(t)
+	for i := 1; i <= 11; i++ {
+		seed(t, db, fmt.Sprintf("go %02d", i), "Body.", false)
+	}
+
+	rec := get(t, app, "/admin/posts?q=go")
+	wantStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+
+	wantContains(t, body, `href="/admin/posts?q=go&amp;page=2"`)
+	wantNotContains(t, body, `href="/admin/posts?page=2"`)
+}
+
+func TestAdminSecondPageShowsTheEleventhPost(t *testing.T) {
+	app, db := newApp(t)
+	for i := 1; i <= 11; i++ {
+		seed(t, db, fmt.Sprintf("Post %02d", i), "Body.", false)
+	}
+
+	rec := get(t, app, "/admin/posts?page=2")
+	wantStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+
+	wantContains(t, body, "Post 01")
+	wantNotContains(t, body, "Post 11")
+}
