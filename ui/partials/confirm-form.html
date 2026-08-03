@@ -2,14 +2,17 @@
      companions. A destructive action is its own URL: GET renders
      back-nav → page-header with the question as Title → explanation
      paragraphs → this form. A GET never mutates; Cancel is a plain
-     link; the submit POSTs to Action. Cancel renders before the
-     button visually regardless of source order.
+     link; the submit POSTs to Action. Cancel is the group's first
+     element in the DOM, so visual order, tab order, and source order
+     all agree: Cancel first, the (possibly destructive) submit last.
+     No CSS reorders it — a keyboard user tabbing forward reaches the
+     destructive control only after passing Cancel, never before.
      Keys:
        Action, Label  strings, required
        Danger    bool, optional — the darkened danger fill
        Hidden    map, optional — hidden inputs, key-ordered
        CancelHref, CancelLabel  strings, optional — label default "Cancel" */}}
-{{define "confirm-form"}}<form class="rst-form-actions" method="post" action="{{.Action}}">{{range $k, $v := .Hidden}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}<button type="submit" class="rst-btn{{if .Danger}} rst-btn--danger{{else}} rst-btn--primary{{end}}">{{.Label}}</button>{{if .CancelHref}}<a class="rst-btn rst-btn--ghost" href="{{.CancelHref}}">{{or .CancelLabel "Cancel"}}</a>{{end}}</form>{{end}}
+{{define "confirm-form"}}<form class="rst-form-actions" method="post" action="{{.Action}}">{{range $k, $v := .Hidden}}<input type="hidden" name="{{$k}}" value="{{$v}}">{{end}}{{if .CancelHref}}<a class="rst-btn rst-btn--ghost" href="{{.CancelHref}}">{{or .CancelLabel "Cancel"}}</a>{{end}}<button type="submit" class="rst-btn{{if .Danger}} rst-btn--danger{{else}} rst-btn--primary{{end}}">{{.Label}}</button></form>{{end}}
 
 {{/* back-nav — the ← return link above a confirm or detail page. */}}
 {{define "back-nav"}}<p class="rst-back-nav"><a href="{{.Href}}">← {{.Label}}</a></p>{{end}}

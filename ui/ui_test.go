@@ -614,7 +614,7 @@ func allPartials() []struct {
 		}},
 		{"confirm-form", map[string]any{
 			"Action": "/orders/1/refund", "Label": "Refund €10.00", "Danger": true,
-			"Hidden": map[string]any{"csrf": "tok"}, "CancelHref": "/orders/1",
+			"Hidden": map[string]any{"csrf": "tok", "id": "42"}, "CancelHref": "/orders/1",
 		}},
 		{"back-nav", map[string]any{"Href": "/orders/1", "Label": "Order AB3PX"}},
 		{"bulk-bar", map[string]any{
@@ -867,11 +867,12 @@ func TestSegTabsMarksCurrent(t *testing.T) {
 	}
 }
 
-// confirm-form's Cancel renders before the submit button visually
-// regardless of source order — .rst-form-actions > a { order: -1 }
-// (tokens.css) does the flip, so a screen-reader/tab-order user still
-// meets the destructive submit last, after Cancel, while a keyboard user
-// tabbing forward hits Cancel first the way it reads on screen.
+// confirm-form's Cancel is the group's first element in the DOM — no CSS
+// reorders it. DOM order, visual order (.rst-form-actions is a plain
+// flex row, no order property), and tab order therefore all agree:
+// Cancel, then the submit. The destructive control is never the first
+// focusable element in the group, so a keyboard user tabbing forward
+// always meets Cancel before they can reach it.
 func TestConfirmFormShape(t *testing.T) {
 	got := render(t, "confirm-form", fixtureFor(t, "confirm-form"))
 	for _, want := range []string{`method="post"`, `action="/orders/1/refund"`,
@@ -884,6 +885,18 @@ func TestConfirmFormShape(t *testing.T) {
 	// Cancel is an <a>, never a submit — a GET never mutates.
 	if strings.Contains(got, `type="submit">Cancel`) {
 		t.Errorf("cancel must be a link: %s", got)
+	}
+	// Cancel precedes the submit button in the DOM — the sole source of
+	// both visual order and tab order now that no CSS reorders them.
+	if cancel, submit := strings.Index(got, `<a class="rst-btn rst-btn--ghost"`), strings.Index(got, `<button type="submit"`); cancel == -1 || submit == -1 || cancel > submit {
+		t.Errorf("cancel must precede the submit button in the DOM: %s", got)
+	}
+	// Hidden inputs are key-ordered (Go's html/template sorts map range
+	// keys), so a caller relying on that ordering — e.g. a CSRF token
+	// expected before other fields — gets a stable, tested guarantee
+	// rather than an accident of map iteration.
+	if csrf, id := strings.Index(got, `name="csrf"`), strings.Index(got, `name="id"`); csrf == -1 || id == -1 || csrf > id {
+		t.Errorf("hidden inputs must render key-ordered (csrf before id): %s", got)
 	}
 }
 
@@ -925,12 +938,29 @@ func TestFormErrorRendersMessageOrNothing(t *testing.T) {
 // mutation in this library. The close control is icon-only, so its
 // accessible name has to come from somewhere other than visible text.
 func TestBulkBarActionsAreRealSubmits(t *testing.T) {
-	got := render(t, "bulk-bar", fixtureFor(t, "bulk-bar"))
+	fixture := fixtureFor(t, "bulk-bar")
+	got := render(t, "bulk-bar", fixture)
 	if !strings.Contains(got, `<button type="submit" name="action" value="refund" class="rst-danger">`) {
 		t.Errorf("actions must be named submit buttons on the surrounding form: %s", got)
 	}
 	if !strings.Contains(got, `aria-label=`) {
 		t.Errorf("the close control needs an accessible name: %s", got)
+	}
+	// The first Actions entry is the surrounding form's implicit-Enter
+	// default — Enter in any text field on the form submits it, whether
+	// or not the menu is even open — so it must never be the
+	// destructive one, and the rendered danger button must be the last
+	// button in the menu, not merely somewhere after the first.
+	actions, ok := fixture["Actions"].([]any)
+	if !ok || len(actions) == 0 {
+		t.Fatalf("fixture has no Actions to check ordering against")
+	}
+	if first, ok := actions[0].(map[string]any); ok && first["Danger"] == true {
+		t.Errorf("the fixture's first action is the form's implicit-Enter default and must not be destructive: %+v", first)
+	}
+	lastButton, dangerAttr := strings.LastIndex(got, "<button "), strings.Index(got, `class="rst-danger"`)
+	if lastButton == -1 || dangerAttr == -1 || dangerAttr < lastButton {
+		t.Errorf("the danger button must be the last button in the actions menu: %s", got)
 	}
 }
 

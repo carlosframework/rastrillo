@@ -348,13 +348,23 @@ body {
    with the label included in the scaled result, both still clear
    4.5:1 by a wide margin:
      light  0.9× fill (#84222a) vs 0.9× label (#e6e6e6)   7.50:1
-     dark   0.9× fill (#dc7e86) vs 0.9× label (#170e2b)   6.50:1 */
+     dark   0.9× fill (#dc7e86) vs 0.9× label (#170e2b)   6.50:1
+   background/border-color/color are restated on :hover, matching
+   .rst-btn--primary:hover's pattern exactly — .rst-btn:hover (same
+   0,2,0 specificity, an earlier rule) sets border-color/color to the
+   accent, and a filter-only :hover rule wins nothing for properties it
+   never declares, so without this restatement the label silently
+   cascades to accent-on-red (~1.05:1) at the exact moment a user
+   commits to a destructive action. */
 .rst-btn--danger {
   background: var(--rst-tone-negative-fg);
   border-color: var(--rst-tone-negative-fg);
   color: var(--rst-on-accent);
 }
 .rst-btn--danger:hover {
+  background: var(--rst-tone-negative-fg);
+  border-color: var(--rst-tone-negative-fg);
+  color: var(--rst-on-accent);
   filter: brightness(0.9);
 }
 
@@ -872,7 +882,6 @@ textarea.rst-input { min-height: 5rem; resize: vertical; }
 .rst-form-foot { align-items: center; background: var(--rst-bg); border-top: 1px solid var(--rst-line); bottom: 0; display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.75rem; padding: 0.8rem 0; position: sticky; z-index: 5; }
 .rst-form-foot .rst-form-foot__note { color: var(--rst-text-muted); font-size: var(--rst-fs-xs); margin-right: auto; }
 .rst-form-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
-.rst-form-actions > a { order: -1; }
 
 @media (prefers-reduced-motion: reduce) {
   .rst-switch__track, .rst-switch__track::after { transition: none; }
@@ -884,7 +893,7 @@ textarea.rst-input { min-height: 5rem; resize: vertical; }
 /* toggle-block — a bordered card whose head is a switch; the body
    reveals via :has(), zero JS. The switch is authoritative: the server
    treats off as off, whatever the revealed (still-POSTed) fields say. */
-.rst-tblock { background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: var(--rst-radius); margin: 0.7rem 0; }
+.rst-tblock { background: var(--rst-surface); border: 1px solid var(--rst-line); border-radius: var(--rst-radius); margin: 0.7rem 0; overflow: hidden; }
 .rst-tblock > .rst-tblock__head { align-items: flex-start; cursor: pointer; display: flex; gap: 0.85rem; margin: 0; padding: 0.9rem 1.05rem; }
 .rst-tblock > .rst-tblock__head:hover { background: var(--rst-accent-soft); }
 .rst-tblock .rst-tblock__title { display: block; font-size: var(--rst-fs-sm); font-weight: 550; }
