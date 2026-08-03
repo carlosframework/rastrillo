@@ -112,11 +112,13 @@ here is hand-rolled, and `tokens.css` scopes its `:focus-visible` rule to
 library containers, so `blog.css` has to restate the outline for controls
 outside them. Roughly half of `blog.css` would disappear the day form
 partials land.
+*Fixed:* the field-text/field-textarea/form-foot partials landed and these forms use them (see admin_new.html); tokens.css now scopes the focus ring to .rst-page, so the restatement is gone. blog.css kept only the page styling the library leaves to the app.
 
 **F3 — no `dropdown`, so "show drafts only" is missing.** Also deferred.
 The obvious next control on the admin list — a status filter — has
 nowhere to attach, so the example ships without it rather than
 hand-rolling a control the library has already scheduled.
+*Fixed:* list-bar takes a Filter dropdown — a native <details> menu of links — and this list filters by status with it (All / Drafts / Published, composing with search and paging).
 
 **F4 — `Serve`'s `DBPath`/`Migrations` are unusable by any app that puts
 the DB in `Ctx`.** `Serve` opens the handle, defers its `Close`, and

@@ -164,13 +164,82 @@ type AdminListView struct {
 	Head  Head
 	Query string
 	// Carry is list-bar's Hidden: name/value pairs a search must
-	// preserve. Empty here — this screen has no sort order or page size
-	// to keep, and a new search deliberately returns to page 1.
-	Carry      [][2]string
-	Rows       []Row
-	Pagination Pagination
-	Empty      bool // no posts at all: the real blank state
-	NoMatch    bool // a search that matched nothing: a plain note, not a card
+	// preserve. The handler sets it to [][2]string{{"status", status}}
+	// when a filter is applied, so a search from a filtered list keeps
+	// it — a new search still deliberately returns to page 1.
+	Carry       [][2]string
+	Filter      Filter
+	NoMatchNote string
+	Rows        []Row
+	Pagination  Pagination
+	Empty       bool // no posts at all: the real blank state
+	NoMatch     bool // a search or filter that matched nothing: a plain note, not a card
+}
+
+// FilterItem is one dropdown choice; Filter is list-bar's Filter value.
+// The field names match the dropdown partial's key contract.
+type FilterItem struct {
+	Href    string
+	Label   string
+	Current bool
+}
+
+type Filter struct {
+	Label string
+	Aria  string
+	Items []FilterItem
+}
+
+// statusLabels resolves a normalized status to its visible label.
+var statusLabels = map[string]string{"": "All", "draft": "Drafts", "published": "Published"}
+
+// NormalizeStatus maps a raw query value onto the three states the
+// screen has. Anything unrecognized is "all", not an error: a stale
+// bookmark should show posts, not a 400.
+func NormalizeStatus(raw string) string {
+	if raw == "draft" || raw == "published" {
+		return raw
+	}
+	return ""
+}
+
+// BuildStatusFilter builds the admin list's status dropdown. Hrefs
+// carry the current search and reset paging — changing a filter starts
+// at page 1 by construction. status must be a NormalizeStatus result
+// ("", "draft" or "published"): it is interpolated into the href
+// unescaped, which every current caller satisfies.
+func BuildStatusFilter(q, status string) Filter {
+	href := func(s string) string {
+		var params []string
+		if q != "" {
+			params = append(params, "q="+url.QueryEscape(q))
+		}
+		if s != "" {
+			params = append(params, "status="+s)
+		}
+		if len(params) == 0 {
+			return "/admin/posts"
+		}
+		return "/admin/posts?" + strings.Join(params, "&")
+	}
+	f := Filter{
+		Label: statusLabels[status],
+		Aria:  "Filter by status: " + statusLabels[status],
+	}
+	for _, s := range []string{"", "draft", "published"} {
+		f.Items = append(f.Items, FilterItem{Href: href(s), Label: statusLabels[s], Current: s == status})
+	}
+	return f
+}
+
+// NoMatchNote words the "nothing matched" note for the applied search
+// and filter. Formatting stays in Go, where a test reaches it.
+func NoMatchNote(q, status string) string {
+	subject := map[string]string{"": "posts", "draft": "drafts", "published": "published posts"}[status]
+	if q != "" {
+		return fmt.Sprintf("No %s match “%s”.", subject, q)
+	}
+	return fmt.Sprintf("No %s yet.", subject)
 }
 
 // AdminFormView is GET /admin/posts/new and GET /admin/posts/{id}/edit,
@@ -281,8 +350,10 @@ func Paragraphs(body string) []string {
 
 // BuildPagination builds the page strip for a list of total items at a
 // 1-based page number. Show is false at or below one page, and the page
-// template guards the partial with it.
-func BuildPagination(base, q string, page, total int) Pagination {
+// template guards the partial with it. status must be a NormalizeStatus
+// result ("", "draft" or "published"): it is interpolated into each
+// href unescaped, which every current caller satisfies.
+func BuildPagination(base, q, status string, page, total int) Pagination {
 	p := Pagination{Show: total > PageSize}
 	if !p.Show {
 		return p
@@ -298,10 +369,15 @@ func BuildPagination(base, q string, page, total int) Pagination {
 	// Built by hand rather than with url.Values.Encode, which sorts its
 	// keys and would emit page before q.
 	href := func(n int) string {
+		var params []string
 		if q != "" {
-			return base + "?q=" + url.QueryEscape(q) + "&page=" + strconv.Itoa(n)
+			params = append(params, "q="+url.QueryEscape(q))
 		}
-		return base + "?page=" + strconv.Itoa(n)
+		if status != "" {
+			params = append(params, "status="+status)
+		}
+		params = append(params, "page="+strconv.Itoa(n))
+		return base + "?" + strings.Join(params, "&")
 	}
 
 	items := []PageItem{{Label: "Previous", Disabled: true}}

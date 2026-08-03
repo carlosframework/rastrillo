@@ -19,10 +19,11 @@ func TestNewPostFormRenders(t *testing.T) {
 	wantStatus(t, rec, http.StatusOK)
 	body := rec.Body.String()
 
-	wantContains(t, body, `<form class="blog-form" method="post" action="/admin/posts">`)
-	wantContains(t, body, `<label for="title">Title</label>`)
-	wantContains(t, body, `<input type="text" id="title" name="title" value="" required>`)
-	wantContains(t, body, `<textarea id="body" name="body" rows="18">`)
+	wantContains(t, body, `<form class="rst-form" method="post" action="/admin/posts">`)
+	wantContains(t, body, `class="rst-field"`)
+	wantContains(t, body, `<label class="rst-field__label" for="title">Title <span class="rst-field__required" aria-hidden="true">*</span></label>`)
+	wantContains(t, body, `<input class="rst-input" id="title" name="title" type="text" required>`)
+	wantContains(t, body, `<textarea class="rst-textarea" id="body" name="body" rows="18">`)
 	// An unsaved post has no status.
 	wantNotContains(t, body, `class="rst-status"`)
 }
@@ -36,7 +37,7 @@ func TestCreateRedirectsToTheNewPostsEditPage(t *testing.T) {
 	})
 	wantStatus(t, rec, http.StatusSeeOther)
 
-	posts, err := blog.List(db, "", 0, blog.PageSize)
+	posts, err := blog.List(db, "", "", 0, blog.PageSize)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -67,7 +68,7 @@ func TestCreateWithAnEmptyTitleIs400AndCreatesNothing(t *testing.T) {
 	// costs the writer what they typed.
 	wantContains(t, body, "Body the writer typed.")
 
-	n, err := blog.Count(db, "")
+	n, err := blog.Count(db, "", "")
 	if err != nil {
 		t.Fatalf("count: %v", err)
 	}
@@ -84,6 +85,7 @@ func TestEditShowsCurrentValuesAndTheDraftPill(t *testing.T) {
 	wantStatus(t, rec, http.StatusOK)
 	body := rec.Body.String()
 
+	wantContains(t, body, `class="rst-field"`)
 	wantContains(t, body, `value="Release notes"`)
 	wantContains(t, body, "The body.")
 	wantContains(t, body, `<span class="rst-status" data-tone="neutral">Draft</span>`)

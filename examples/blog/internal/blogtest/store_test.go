@@ -49,7 +49,7 @@ func TestOpenIsIdempotent(t *testing.T) {
 		t.Fatalf("second open: %v", err)
 	}
 	defer second.Close()
-	n, err := blog.Count(second, "")
+	n, err := blog.Count(second, "", "")
 	if err != nil {
 		t.Fatalf("count: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestListOrdersNewestFirstWithAnIDTiebreak(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	posts, err := blog.List(db, "", 0, blog.PageSize)
+	posts, err := blog.List(db, "", "", 0, blog.PageSize)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestListPagesWithOffsetAndLimit(t *testing.T) {
 			t.Fatalf("create: %v", err)
 		}
 	}
-	posts, err := blog.List(db, "", 2, 2)
+	posts, err := blog.List(db, "", "", 2, 2)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -163,14 +163,14 @@ func TestSearchMatchesTitlesCaseInsensitively(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	posts, err := blog.List(db, "GOING", 0, blog.PageSize)
+	posts, err := blog.List(db, "GOING", "", 0, blog.PageSize)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
 	if len(posts) != 1 || posts[0].Title != "Going to production" {
 		t.Fatalf("search matched %v, want just the title match", titles(posts))
 	}
-	n, err := blog.Count(db, "GOING")
+	n, err := blog.Count(db, "GOING", "")
 	if err != nil {
 		t.Fatalf("count: %v", err)
 	}
@@ -190,14 +190,14 @@ func TestSearchEscapesLikeWildcards(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	posts, err := blog.List(db, "100%", 0, blog.PageSize)
+	posts, err := blog.List(db, "100%", "", 0, blog.PageSize)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
 	if len(posts) != 1 {
 		t.Fatalf("search matched %v, want just the literal match", titles(posts))
 	}
-	if underscores, err := blog.Count(db, "_"); err != nil {
+	if underscores, err := blog.Count(db, "_", ""); err != nil {
 		t.Fatalf("count: %v", err)
 	} else if underscores != 0 {
 		t.Errorf("_ matched %d titles as a wildcard, want 0", underscores)
@@ -244,6 +244,54 @@ func TestUpdateAndSetPublishedAndDelete(t *testing.T) {
 	}
 	if _, err := blog.Get(db, id); !errors.Is(err, sql.ErrNoRows) {
 		t.Errorf("err = %v after delete, want sql.ErrNoRows", err)
+	}
+}
+
+func TestListFiltersByStatus(t *testing.T) {
+	db := newDB(t)
+	draftID, err := blog.Create(db, "Draft one", "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubID, err := blog.Create(db, "Published one", "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := blog.SetPublished(db, pubID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	drafts, err := blog.List(db, "", "draft", 0, blog.PageSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(drafts) != 1 || drafts[0].ID != draftID {
+		t.Errorf("draft filter: got %v", drafts)
+	}
+
+	pubs, err := blog.List(db, "", "published", 0, blog.PageSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pubs) != 1 || pubs[0].ID != pubID {
+		t.Errorf("published filter: got %v", pubs)
+	}
+
+	// Search and status compose with AND.
+	both, err := blog.List(db, "one", "draft", 0, blog.PageSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(both) != 1 || both[0].ID != draftID {
+		t.Errorf("search+status: got %v", both)
+	}
+
+	n, err := blog.Count(db, "", "draft")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("Count draft = %d, want 1", n)
 	}
 }
 

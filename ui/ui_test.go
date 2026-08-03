@@ -76,6 +76,7 @@ func TestBothThemesDeclareEveryColourToken(t *testing.T) {
 		"--rst-tone-positive-fg", "--rst-tone-positive-bg",
 		"--rst-tone-warning-fg", "--rst-tone-warning-bg",
 		"--rst-tone-negative-fg", "--rst-tone-negative-bg",
+		"--rst-shadow",
 	}
 	for _, prop := range themed {
 		// Declarations are "<prop>: value"; uses are "var(<prop>)", so the
@@ -327,9 +328,33 @@ func TestListBarWrapsTheSearchFormInAToolbarStrip(t *testing.T) {
 			t.Errorf("missing %q: %s", want, got)
 		}
 	}
-	// This slice renders no filter or sort control (spec §3).
+	// Without a Filter, the bar renders no dropdown — the key, not the
+	// slice boundary, is now what gates it.
 	if strings.Contains(got, "<details") {
-		t.Errorf("list-bar rendered a dropdown, which is a later slice: %s", got)
+		t.Errorf("list-bar rendered a dropdown without a Filter: %s", got)
+	}
+}
+
+func TestListBarRendersAFilterDropdownWhenGivenOne(t *testing.T) {
+	got := render(t, "list-bar", map[string]any{
+		"SearchAction": "/admin/posts",
+		"Filter": map[string]any{
+			"Label": "All",
+			"Aria":  "Filter by status: All",
+			"Items": []any{
+				map[string]any{"Href": "/admin/posts", "Label": "All", "Current": true},
+				map[string]any{"Href": "/admin/posts?status=draft", "Label": "Drafts"},
+			},
+		},
+	})
+	for _, want := range []string{
+		`<details class="rst-dropdown">`,
+		`aria-label="Filter by status: All"`,
+		`<a href="/admin/posts?status=draft">Drafts</a>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
 	}
 }
 
@@ -657,5 +682,149 @@ func TestDisabledPaginationChipIsStyled(t *testing.T) {
 	}
 	if strings.Contains(css, `.rst-pagination [aria-disabled=`) {
 		t.Errorf("tokens.css still carries the dead aria-disabled pagination rule no partial emits")
+	}
+}
+
+func TestDropdownRendersADetailsMenuOfLinks(t *testing.T) {
+	got := render(t, "dropdown", map[string]any{
+		"Label": "All",
+		"Aria":  "Filter by status: All",
+		"Items": []any{
+			map[string]any{"Href": "/admin/posts", "Label": "All", "Current": true},
+			map[string]any{"Href": "/admin/posts?status=draft", "Label": "Drafts"},
+		},
+	})
+	for _, want := range []string{
+		`<details class="rst-dropdown">`,
+		`<summary class="rst-btn rst-dropdown__summary" aria-label="Filter by status: All">All`,
+		`<a href="/admin/posts" aria-current="true">All`,
+		`<a href="/admin/posts?status=draft">Drafts</a>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+	// The current item is marked twice — attribute and check icon; the
+	// non-current one carries neither.
+	if !strings.Contains(got, `path d="M20 6 9 17l-5-5"`) {
+		t.Errorf("current item lost its check icon: %s", got)
+	}
+	if strings.Count(got, "aria-current") != 1 {
+		t.Errorf("aria-current should mark exactly the current item: %s", got)
+	}
+}
+
+func TestDropdownMinimalFixture(t *testing.T) {
+	got := render(t, "dropdown", map[string]any{
+		"Label": "Sort",
+		"Items": []any{map[string]any{"Href": "/x", "Label": "Newest"}},
+	})
+	if strings.Contains(got, "aria-label") {
+		t.Errorf("Aria was absent but an aria-label rendered: %s", got)
+	}
+	if !strings.Contains(got, `path d="m6 9 6 6 6-6"`) {
+		t.Errorf("summary lost its disclosure chevron: %s", got)
+	}
+}
+
+func TestFieldTextMaximalFixture(t *testing.T) {
+	got := render(t, "field-text", map[string]any{
+		"Name": "title", "Label": "Title", "Value": "Hello", "Type": "text",
+		"Required": true, "Hint": "Shown in the list.", "Error": "Title is required.",
+		"Autocomplete": "off",
+	})
+	for _, want := range []string{
+		`<div class="rst-field">`,
+		`<label class="rst-field__label" for="title">Title`,
+		`<span class="rst-field__required" aria-hidden="true">*</span>`,
+		`<input class="rst-input" id="title" name="title" type="text" value="Hello" autocomplete="off" required aria-invalid="true" aria-describedby="title-hint title-error">`,
+		`<small class="rst-field__hint" id="title-hint">Shown in the list.</small>`,
+		`<small class="rst-field__error" id="title-error">Title is required.</small>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+func TestFieldTextMinimalFixture(t *testing.T) {
+	got := render(t, "field-text", map[string]any{"Name": "q", "Label": "Query"})
+	if !strings.Contains(got, `<input class="rst-input" id="q" name="q" type="text">`) {
+		t.Errorf("minimal input wrong: %s", got)
+	}
+	for _, absent := range []string{"aria-describedby", "aria-invalid", "required", "value=", "rst-field__hint", "rst-field__error"} {
+		if strings.Contains(got, absent) {
+			t.Errorf("%q rendered without its key: %s", absent, got)
+		}
+	}
+}
+
+// aria-describedby lists only ids that exist: hint alone, error alone.
+func TestFieldTextDescribedByMatchesRenderedIds(t *testing.T) {
+	hintOnly := render(t, "field-text", map[string]any{"Name": "a", "Label": "A", "Hint": "h"})
+	if !strings.Contains(hintOnly, `aria-describedby="a-hint"`) {
+		t.Errorf("hint-only describedby wrong: %s", hintOnly)
+	}
+	errOnly := render(t, "field-text", map[string]any{"Name": "a", "Label": "A", "Error": "e"})
+	if !strings.Contains(errOnly, `aria-describedby="a-error"`) {
+		t.Errorf("error-only describedby wrong: %s", errOnly)
+	}
+}
+
+func TestFieldTextareaMaximalFixture(t *testing.T) {
+	got := render(t, "field-textarea", map[string]any{
+		"Name": "body", "Label": "Body", "Value": "Hello\n\nWorld",
+		"Rows": 18, "Required": true, "Hint": "Plain text.", "Error": "Too long.",
+	})
+	for _, want := range []string{
+		`<label class="rst-field__label" for="body">Body`,
+		`<textarea class="rst-textarea" id="body" name="body" rows="18" required aria-invalid="true" aria-describedby="body-hint body-error">Hello`,
+		`<small class="rst-field__hint" id="body-hint">Plain text.</small>`,
+		`<small class="rst-field__error" id="body-error">Too long.</small>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+func TestFieldTextareaMinimalFixture(t *testing.T) {
+	got := render(t, "field-textarea", map[string]any{"Name": "notes", "Label": "Notes"})
+	if !strings.Contains(got, `<textarea class="rst-textarea" id="notes" name="notes"></textarea>`) {
+		t.Errorf("minimal textarea wrong: %s", got)
+	}
+	if strings.Contains(got, "rows=") {
+		t.Errorf("rows rendered without the key: %s", got)
+	}
+}
+
+func TestFormFootRendersSubmitAndCancel(t *testing.T) {
+	got := render(t, "form-foot", map[string]any{
+		"Submit": "Save", "CancelHref": "/admin/posts", "CancelLabel": "Back to posts",
+	})
+	for _, want := range []string{
+		`<div class="rst-form__foot">`,
+		`<button class="rst-btn rst-btn--primary" type="submit">Save</button>`,
+		`<a class="rst-btn" href="/admin/posts">Back to posts</a>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+func TestFormFootMinimalFixture(t *testing.T) {
+	got := render(t, "form-foot", map[string]any{"Submit": "Create"})
+	if strings.Contains(got, "<a ") {
+		t.Errorf("cancel link rendered without CancelHref: %s", got)
+	}
+}
+
+// F2's second half: the focus ring covers the whole app column, so a
+// hand-rolled control inside .rst-page no longer restates the outline.
+func TestFocusRingScopeIncludesThePageColumn(t *testing.T) {
+	css := string(TokensCSS())
+	if !strings.Contains(css, ":where(.rst-page,") {
+		t.Error("tokens.css :focus-visible scope does not start with .rst-page")
 	}
 }

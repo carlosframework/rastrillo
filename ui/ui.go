@@ -12,17 +12,19 @@
 //	        ParseFS(ui.Templates(), "*.html"))
 //	tmpl = template.Must(tmpl.ParseFS(appTemplateFS, "templates/*.html"))
 //
-// The eight partials are page-header, list-bar, list-bar-search,
-// list-search-submit, list-row-action, status-pill, empty-state and
-// pagination. Each takes exactly one data value; build it inline with
-// dict (see Funcs). Each partial's own file carries its data contract in
-// a template comment above the {{define}}.
+// The twelve partials are page-header, list-bar, list-bar-search,
+// list-search-submit, list-row-action, status-pill, empty-state,
+// pagination, field-text, field-textarea, form-foot and dropdown. Each
+// takes exactly one data value; build it inline with dict (see Funcs).
+// Each partial's own file carries its data contract in a template
+// comment above the {{define}}.
 //
-// Two container classes the partials assume but do not emit, because
+// Three container elements the partials assume but do not emit, because
 // they belong to the app's own page markup:
 //
 //	<div class="rst-page">   — the centred content column every screen sits in
 //	<div class="rst-list">   — the card wrapping a list-bar and a run of rows
+//	<form class="rst-form">  — the column a run of fields and a form-foot sit in
 //
 // Styling comes from tokens.css, which rastrillo new writes once into a
 // new app's static/ directory. rastrillo.Serve never serves it: from the

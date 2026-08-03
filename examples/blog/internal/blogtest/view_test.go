@@ -36,7 +36,7 @@ func TestEachPageRendersItsOwnContent(t *testing.T) {
 	wantContains(t, index, "Notes, in the order they were written.")
 	wantContains(t, post, `<article class="blog-article">`)
 	wantNotContains(t, post, "Notes, in the order they were written.")
-	wantContains(t, adminNew, `<form class="blog-form" method="post" action="/admin/posts">`)
+	wantContains(t, adminNew, `<form class="rst-form" method="post" action="/admin/posts">`)
 	wantNotContains(t, adminNew, `<article class="blog-article">`)
 }
 
@@ -129,10 +129,10 @@ func TestEditFormResolvesTheStatusPillPair(t *testing.T) {
 }
 
 func TestPaginationIsHiddenAtOnePageAndShownBeyondIt(t *testing.T) {
-	if got := blog.BuildPagination("/admin/posts", "", 1, 10); got.Show {
+	if got := blog.BuildPagination("/admin/posts", "", "", 1, 10); got.Show {
 		t.Errorf("ten posts is one page; the strip must stay away")
 	}
-	got := blog.BuildPagination("/admin/posts", "", 1, 11)
+	got := blog.BuildPagination("/admin/posts", "", "", 1, 11)
 	if !got.Show {
 		t.Fatalf("eleven posts is two pages; the strip must appear")
 	}
@@ -153,7 +153,7 @@ func TestPaginationIsHiddenAtOnePageAndShownBeyondIt(t *testing.T) {
 }
 
 func TestPaginationCarriesTheQueryAndDisablesNextOnTheLastPage(t *testing.T) {
-	got := blog.BuildPagination("/admin/posts", "go", 2, 11)
+	got := blog.BuildPagination("/admin/posts", "go", "", 2, 11)
 	if got.Items[0] != (blog.PageItem{Label: "Previous", Href: "/admin/posts?q=go&page=1"}) {
 		t.Errorf("Previous = %+v", got.Items[0])
 	}
@@ -163,10 +163,35 @@ func TestPaginationCarriesTheQueryAndDisablesNextOnTheLastPage(t *testing.T) {
 	}
 }
 
+// A non-empty status must flow through BuildPagination too, in order
+// after q and before page — the admin list's own filter dropdown href
+// also contains "q=Note" and "status=draft", so an assertion on the
+// full page string couldn't tell the two apart; this one reaches
+// BuildPagination directly.
+func TestPaginationCarriesTheStatusFilterAfterTheQuery(t *testing.T) {
+	got := blog.BuildPagination("/admin/posts", "Note", "draft", 1, blog.PageSize+1)
+	next := got.Items[len(got.Items)-1]
+	if next != (blog.PageItem{Label: "Next", Href: "/admin/posts?q=Note&status=draft&page=2"}) {
+		t.Errorf("Next = %+v", next)
+	}
+}
+
+// The admin list's integration tests only ever exercise a plain search
+// (q, no status) or a plain filter (status, no q); this test pins the
+// combined wording directly, plus the filter-only case's curly quotes.
+func TestNoMatchNotePinsTheCombinedQueryAndStatusWording(t *testing.T) {
+	if got, want := blog.NoMatchNote("x", "draft"), "No drafts match “x”."; got != want {
+		t.Errorf("NoMatchNote(%q, %q) = %q, want %q", "x", "draft", got, want)
+	}
+	if got, want := blog.NoMatchNote("", "published"), "No published posts yet."; got != want {
+		t.Errorf("NoMatchNote(%q, %q) = %q, want %q", "", "published", got, want)
+	}
+}
+
 // A gap needs 71 posts to appear, so the app builds it correctly and
 // never renders it — the library's own fixtures cover that item kind.
 func TestPaginationWindowsWithGapsPastSevenPages(t *testing.T) {
-	got := blog.BuildPagination("/", "", 5, 100) // ten pages
+	got := blog.BuildPagination("/", "", "", 5, 100) // ten pages
 	var labels []string
 	gaps := 0
 	for _, item := range got.Items {
