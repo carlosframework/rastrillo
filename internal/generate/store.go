@@ -342,7 +342,11 @@ func queriesSQL(r rastrillo.Resource) []byte {
 		vals = append(vals, fmt.Sprintf("sqlc.arg(%s)", c.SQL))
 	}
 	names = append(names, "created_at", "updated_at")
-	vals = append(vals, "sqlc.arg(now)", "sqlc.arg(now2)")
+	// Both timestamp columns take the same value at creation time, and
+	// sqlc accepts reusing one sqlc.arg(now) twice in the same query
+	// (verified against sqlc's sqlite engine in Task 6) — no need for
+	// the separate now/now2 args an earlier draft used.
+	vals = append(vals, "sqlc.arg(now)", "sqlc.arg(now)")
 	blocks = append(blocks, fmt.Sprintf("-- name: Create%s :one\n%s", singular,
 		buildStatement(
 			fmt.Sprintf("INSERT INTO %s (%s)", r.Name, strings.Join(names, ", ")),

@@ -66,7 +66,7 @@ SELECT * FROM notes WHERE id = sqlc.arg(id);
 
 -- name: CreateNote :one
 INSERT INTO notes (title, price, body, created_at, updated_at)
-VALUES (sqlc.arg(title), sqlc.arg(price), sqlc.arg(body), sqlc.arg(now), sqlc.arg(now2))
+VALUES (sqlc.arg(title), sqlc.arg(price), sqlc.arg(body), sqlc.arg(now), sqlc.arg(now))
 RETURNING id;
 
 -- name: UpdateNoteBasics :exec
