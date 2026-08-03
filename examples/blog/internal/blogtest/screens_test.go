@@ -1,0 +1,204 @@
+package blogtest
+
+import (
+	"fmt"
+	"net/http"
+	"os"
+	"regexp"
+	"strings"
+	"testing"
+)
+
+// populatedScreens renders every screen with content on it: eleven
+// published posts (so the guarded pagination strip appears on both list
+// screens, and /?page=2 is a real second page rather than an empty
+// state), plus one draft so the edit screen has a neutral pill to show.
+func populatedScreens(t *testing.T) map[string]string {
+	t.Helper()
+	app, db := newApp(t)
+	var published int64
+	for i := 1; i <= 11; i++ {
+		published = seed(t, db, fmt.Sprintf("Go post %02d", i), "First paragraph.\n\nSecond paragraph.", true)
+	}
+	draft := seed(t, db, "A draft to edit", "Body.", false)
+
+	out := map[string]string{}
+	for _, target := range []string{
+		"/",
+		"/?page=2",
+		fmt.Sprintf("/posts/%d", published),
+		"/admin/posts",
+		"/admin/posts?q=go",
+		"/admin/posts?q=zzz",
+		"/admin/posts/new",
+		fmt.Sprintf("/admin/posts/%d/edit", published),
+		fmt.Sprintf("/admin/posts/%d/edit", draft),
+	} {
+		rec := get(t, app, target)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d, want 200", target, rec.Code)
+		}
+		out[target] = rec.Body.String()
+	}
+	return out
+}
+
+// emptyScreens renders the two blank states.
+func emptyScreens(t *testing.T) map[string]string {
+	t.Helper()
+	app, _ := newApp(t)
+	out := map[string]string{}
+	for _, target := range []string{"/", "/admin/posts"} {
+		rec := get(t, app, target)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d, want 200", target, rec.Code)
+		}
+		out["empty "+target] = rec.Body.String()
+	}
+	return out
+}
+
+func allScreens(t *testing.T) map[string]string {
+	t.Helper()
+	out := populatedScreens(t)
+	for name, html := range emptyScreens(t) {
+		out[name] = html
+	}
+	return out
+}
+
+// The acceptance criterion, made executable: all eight partials are used
+// by the running app, not by a fixture. The marker strings are the ones
+// ui_test.go's own smoke test uses.
+func TestAllEightPartialsAppearAcrossTheApp(t *testing.T) {
+	var combined strings.Builder
+	for _, html := range allScreens(t) {
+		combined.WriteString(html)
+	}
+	out := combined.String()
+
+	markers := map[string]string{
+		"page-header":        `<header class="rst-page-header">`,
+		"list-bar":           `<div class="rst-lbar">`,
+		"list-bar-search":    `<form class="rst-search"`,
+		"list-search-submit": `<button class="rst-sr-only" type="submit">`,
+		"list-row-action":    `<div class="rst-row">`,
+		"status-pill":        `<span class="rst-status"`,
+		"empty-state":        `<div class="rst-empty">`,
+		"pagination":         `<nav class="rst-pagination"`,
+	}
+	for name, marker := range markers {
+		if !strings.Contains(out, marker) {
+			t.Errorf("no screen rendered %s (%q)", name, marker)
+		}
+	}
+}
+
+func TestEveryScreenHasAPageHeaderAndATitle(t *testing.T) {
+	titleRe := regexp.MustCompile(`<title>([^<]+)</title>`)
+	for name, html := range allScreens(t) {
+		if !strings.Contains(html, `<header class="rst-page-header">`) {
+			t.Errorf("%s has no page header", name)
+		}
+		m := titleRe.FindStringSubmatch(html)
+		if m == nil || strings.TrimSpace(m[1]) == "" {
+			t.Errorf("%s has no non-empty <title>", name)
+		}
+	}
+}
+
+func TestAdminListScreenCarriesItsStockComponents(t *testing.T) {
+	screens := populatedScreens(t)
+	html := screens["/admin/posts"]
+	for _, want := range []string{
+		`<header class="rst-page-header">`,
+		`<div class="rst-lbar">`,
+		`<form class="rst-search"`,
+		`<button class="rst-sr-only" type="submit">`,
+		`<div class="rst-row">`,
+		`<nav class="rst-pagination"`,
+	} {
+		wantContains(t, html, want)
+	}
+}
+
+// Zero JavaScript, and nothing the browser fetches from another origin.
+// The layout's two stylesheet links are the app's only asset references,
+// so unlike the library's own sweep this one permits <link and checks
+// the target instead.
+func TestNoScreenContainsScriptOrAnOffOriginReference(t *testing.T) {
+	for name, html := range allScreens(t) {
+		for _, bad := range []string{"<script", "<iframe", "onload=", "onclick=", "http://", "https://", "//cdn", "srcset", "@import"} {
+			if strings.Contains(html, bad) {
+				t.Errorf("%s reaches outside the page (%q)", name, bad)
+			}
+		}
+		for _, attr := range []string{`href="`, `action="`} {
+			for _, value := range attributeValues(html, attr) {
+				if value == "" || !strings.ContainsAny(value[:1], "/?#") {
+					t.Errorf("%s: %s%s…\" is not a same-origin reference", name, attr, value)
+				}
+			}
+		}
+	}
+}
+
+// attributeValues returns every value of one attribute in the HTML.
+func attributeValues(html, attr string) []string {
+	var out []string
+	rest := html
+	for {
+		i := strings.Index(rest, attr)
+		if i < 0 {
+			return out
+		}
+		rest = rest[i+len(attr):]
+		j := strings.Index(rest, `"`)
+		if j < 0 {
+			return out
+		}
+		out = append(out, rest[:j])
+		rest = rest[j+1:]
+	}
+}
+
+func TestBlogCSSIsSelfContained(t *testing.T) {
+	css := readBlogCSS(t)
+	for _, bad := range []string{"@import", "url(", "http://", "https://", "src:"} {
+		if strings.Contains(css, bad) {
+			t.Errorf("blog.css reaches outside the page (%q)", bad)
+		}
+	}
+}
+
+// blog.css never styles a library class: an example that shipped
+// .rst-row { padding: … } would be teaching every reader to fork the
+// design system on day one. Comments are stripped first, because the
+// file's own header explains the rule by naming the prefix.
+func TestBlogCSSStylesNoLibraryClass(t *testing.T) {
+	css := regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(readBlogCSS(t), "")
+	if strings.Contains(css, ".rst-") {
+		t.Errorf("blog.css contains a .rst- selector:\n%s", css)
+	}
+}
+
+// Colours and spacing come from tokens, never literals — that is the
+// whole mechanism by which these controls track the dark theme.
+func TestBlogCSSUsesTokensNotLiterals(t *testing.T) {
+	css := regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(readBlogCSS(t), "")
+	if m := regexp.MustCompile(`#[0-9a-fA-F]{3,8}\b`).FindString(css); m != "" {
+		t.Errorf("blog.css contains a literal colour %q", m)
+	}
+	if !strings.Contains(css, "var(--rst-accent)") {
+		t.Errorf("blog.css does not restate the focus ring with the accent token")
+	}
+}
+
+func readBlogCSS(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile("../../static/blog.css")
+	if err != nil {
+		t.Fatalf("read blog.css: %v", err)
+	}
+	return string(b)
+}

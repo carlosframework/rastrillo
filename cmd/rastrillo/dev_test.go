@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -79,5 +80,108 @@ func TestSplitAppArgs(t *testing.T) {
 	own, app = splitAppArgs(nil)
 	if len(own) != 0 || len(app) != 0 {
 		t.Fatalf("got (%v, %v), want ([], [])", own, app)
+	}
+}
+
+func TestParseDevArgs(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantDir    string
+		wantApp    []string
+		wantHelp   bool
+		wantErrSub string // non-empty: err must be non-nil and contain this
+	}{
+		{name: "no args defaults to .", args: nil, wantDir: "."},
+		{name: "dir only", args: []string{"myapp"}, wantDir: "myapp"},
+		{
+			name:    "dir and app args",
+			args:    []string{"myapp", "--", "-addr", ":9000"},
+			wantDir: "myapp",
+			wantApp: []string{"-addr", ":9000"},
+		},
+		{
+			name:    "app args only, no dir",
+			args:    []string{"--", "-addr", ":9000"},
+			wantDir: ".",
+			wantApp: []string{"-addr", ":9000"},
+		},
+		{
+			name:    "dash h after separator passed to app",
+			args:    []string{".", "--", "-h"},
+			wantDir: ".",
+			wantApp: []string{"-h"},
+		},
+		{
+			name:       "leading dash rejected",
+			args:       []string{"-addr", ":9000"},
+			wantErrSub: `pass app flags after "--"`,
+		},
+		{name: "help -h", args: []string{"-h"}, wantHelp: true},
+		{name: "help -help", args: []string{"-help"}, wantHelp: true},
+		{name: "help --help", args: []string{"--help"}, wantHelp: true},
+		{
+			name:       "extra arg after dir rejected",
+			args:       []string{"myapp", "-addr", ":9000"},
+			wantErrSub: `rastrillo dev myapp --`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir, appArgs, help, err := parseDevArgs(tt.args)
+			if tt.wantErrSub != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErrSub) {
+					t.Fatalf("err = %v, want containing %q", err, tt.wantErrSub)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if help != tt.wantHelp {
+				t.Fatalf("help = %v, want %v", help, tt.wantHelp)
+			}
+			if tt.wantHelp {
+				return
+			}
+			if dir != tt.wantDir {
+				t.Fatalf("dir = %q, want %q", dir, tt.wantDir)
+			}
+			if len(appArgs) != len(tt.wantApp) {
+				t.Fatalf("appArgs = %v, want %v", appArgs, tt.wantApp)
+			}
+			for i := range appArgs {
+				if appArgs[i] != tt.wantApp[i] {
+					t.Fatalf("appArgs = %v, want %v", appArgs, tt.wantApp)
+				}
+			}
+		})
+	}
+}
+
+func TestDevUsage(t *testing.T) {
+	// devUsage must go to stdout, not stderr — a help request is not an
+	// error.
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	devUsage()
+	w.Close()
+	os.Stdout = old
+
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(out)
+	if !strings.Contains(got, "rastrillo dev [dir]") {
+		t.Fatalf("usage should show the command form, got: %s", got)
+	}
+	if !strings.Contains(got, `"--"`) {
+		t.Fatalf("usage should explain --, got: %s", got)
 	}
 }
