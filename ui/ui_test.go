@@ -850,3 +850,28 @@ func TestFocusRingScopeIncludesThePageColumn(t *testing.T) {
 		t.Error("tokens.css :focus-visible scope does not start with .rst-page")
 	}
 }
+
+func TestDetailListRendersLabelValueRows(t *testing.T) {
+	got := render(t, "detail-list", map[string]any{
+		"Items": []any{
+			map[string]any{"Label": "Title", "Value": "Hello"},
+			map[string]any{"Label": "Price", "Value": "$1.00", "Mono": true},
+		},
+	})
+	for _, want := range []string{
+		`<dl class="rst-detail">`,
+		`<dt>Title</dt>`, `<dd>Hello</dd>`,
+		`<dt>Price</dt>`, `<dd class="rst-mono">$1.00</dd>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+func TestDetailListEmptyItemsRendersEmptyList(t *testing.T) {
+	got := render(t, "detail-list", map[string]any{"Items": []any{}})
+	if !strings.Contains(got, `<dl class="rst-detail">`) || strings.Contains(got, "<dt>") {
+		t.Errorf("empty detail-list wrong: %s", got)
+	}
+}
