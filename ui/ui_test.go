@@ -152,59 +152,138 @@ func reducedMotionBlocks(css string) (blocks []string, rest string) {
 // declaration body.
 type leafRule struct{ selector, body string }
 
-// leafRules extracts every innermost selector{...} rule in css — this
-// naturally includes rules nested inside an @media block (matched before
-// the wrapping @media's own, still-open brace), since none of them nest
-// further themselves.
+// leafRulePattern's selector group ([^{}]+) is greedy over everything
+// since the previous rule's closing brace, which includes any comment
+// sitting between the two rules — for the very first rule in the file,
+// that is tokens.css's entire, ~100-line file-header comment. blockCommentPattern
+// strips /* ... */ spans (across lines: (?s) makes '.' match '\n') out of
+// a raw selector capture before it is trimmed and used as a map key or
+// error-message value, so neither is unusably long or noisy.
+var blockCommentPattern = regexp.MustCompile(`(?s)/\*.*?\*/`)
+
+// leafRulePattern extracts every innermost selector{...} rule in css —
+// this naturally includes rules nested inside an @media block (matched
+// before the wrapping @media's own, still-open brace), since none of
+// them nest further themselves.
 var leafRulePattern = regexp.MustCompile(`([^{}]+)\{([^{}]*)\}`)
 
 func leafRules(css string) []leafRule {
 	var out []leafRule
 	for _, m := range leafRulePattern.FindAllStringSubmatch(css, -1) {
-		out = append(out, leafRule{selector: strings.TrimSpace(m[1]), body: m[2]})
+		sel := blockCommentPattern.ReplaceAllString(m[1], "")
+		// Fields+Join collapses any remaining internal whitespace/newlines
+		// left by a stripped multi-line comment down to single spaces, on
+		// top of trimming the ends.
+		sel = strings.Join(strings.Fields(sel), " ")
+		out = append(out, leafRule{selector: sel, body: m[2]})
 	}
 	return out
 }
 
-// motionPropertyPattern finds a transition/animation declaration and
-// captures its value, so "transition: none" (the disable declaration
-// itself) can be told apart from an actual animated property.
+// selectorList splits a (possibly comma-separated) selector into its
+// individual, trimmed selectors — ".a, .a::after" becomes [".a",
+// ".a::after"], each compared for exact equality elsewhere in this file,
+// never by substring: a substring check would let a new, unguarded
+// ".rst-tip" rule pass by riding on ".rst-tip::after" already being
+// listed in a reduce block, which is exactly the false negative this
+// gate exists to catch.
+func selectorList(sel string) []string {
+	var out []string
+	for _, s := range strings.Split(sel, ",") {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// motionDecl is one transition/animation declaration: the CSS property
+// name and its (trimmed) value.
+type motionDecl struct{ prop, val string }
+
+// motionPropertyPattern finds every transition/animation declaration in
+// a rule body and captures its value, so "transition: none" (the disable
+// declaration itself) can be told apart from an actual animated
+// property, and so a rule declaring both properties is not silently
+// reduced to only the first FindAll would otherwise stop at.
 var motionPropertyPattern = regexp.MustCompile(`(?:^|;)\s*(transition|animation)\s*:\s*([^;]+)`)
+
+func motionDecls(body string) []motionDecl {
+	var out []motionDecl
+	for _, m := range motionPropertyPattern.FindAllStringSubmatch(body, -1) {
+		out = append(out, motionDecl{prop: m[1], val: strings.TrimSpace(m[2])})
+	}
+	return out
+}
+
+// reduceIndex maps an exact selector to the set of properties some
+// prefers-reduced-motion: reduce rule disables (declares "none") for
+// that exact selector.
+type reduceIndex map[string]map[string]bool
+
+func buildReduceIndex(blocks []string) reduceIndex {
+	idx := reduceIndex{}
+	for _, block := range blocks {
+		for _, rule := range leafRules(block) {
+			for _, sel := range selectorList(rule.selector) {
+				for _, d := range motionDecls(rule.body) {
+					if d.val != "none" {
+						continue
+					}
+					if idx[sel] == nil {
+						idx[sel] = map[string]bool{}
+					}
+					idx[sel][d.prop] = true
+				}
+			}
+		}
+	}
+	return idx
+}
 
 // TestReducedMotionDisablesEveryTransition is the motion gate (task 5):
 // every selector that declares a real transition or animation outside a
-// prefers-reduced-motion block must have that same selector text appear
-// again inside one — tokens.css's way of disabling it for a user who has
-// asked the OS to reduce motion. This is a textual, not semantic, check
-// (substring containment of the selector string), matching how
-// tokens.css actually restates selectors verbatim in its reduce blocks
-// today; see reducedMotionAllowlist for the escape hatch if that ever
-// stops being true for a legitimate reason.
+// prefers-reduced-motion block must have that exact selector — not a
+// selector merely containing or contained by it — disable that exact
+// same property (transition disabled by "transition: none", animation by
+// "animation: none") somewhere inside a
+// @media (prefers-reduced-motion: reduce) block. Two failure modes this
+// specifically guards against, both found by mutation during review:
+// declaring a *different* motion property on an already-listed selector
+// (selector reappearing is not enough — the property must actually be
+// neutralized), and a new selector merely overlapping textually with one
+// already covered (".rst-tip" vs ".rst-tip::after") — hence the exact,
+// comma-split selector match in selectorList/buildReduceIndex rather than
+// a substring check.
 func TestReducedMotionDisablesEveryTransition(t *testing.T) {
 	css := string(TokensCSS())
 	reduceBlocks, rest := reducedMotionBlocks(css)
 	if len(reduceBlocks) == 0 {
 		t.Fatal("tokens.css declares no @media (prefers-reduced-motion: reduce) block at all")
 	}
-	joinedReduce := strings.Join(reduceBlocks, "\n")
+	idx := buildReduceIndex(reduceBlocks)
 
 	tested := 0
 	for _, rule := range leafRules(rest) {
-		m := motionPropertyPattern.FindStringSubmatch(rule.body)
-		if m == nil {
+		decls := motionDecls(rule.body)
+		if len(decls) == 0 {
 			continue
 		}
-		if strings.TrimSpace(m[2]) == "none" {
-			// Already disabled unconditionally; nothing to gate.
-			continue
-		}
-		tested++
-		if reducedMotionAllowlist[rule.selector] {
-			continue
-		}
-		if !strings.Contains(joinedReduce, rule.selector) {
-			t.Errorf("selector %q declares %s: %s with no matching disable under prefers-reduced-motion: reduce (add one, or add the selector to reducedMotionAllowlist with a reason)",
-				rule.selector, m[1], strings.TrimSpace(m[2]))
+		for _, sel := range selectorList(rule.selector) {
+			for _, d := range decls {
+				if d.val == "none" {
+					// Already disabled unconditionally; nothing to gate.
+					continue
+				}
+				tested++
+				if reducedMotionAllowlist[sel] {
+					continue
+				}
+				if !idx[sel][d.prop] {
+					t.Errorf("selector %q declares %s: %s with no exact-selector %q: none under prefers-reduced-motion: reduce (add one, or add %q to reducedMotionAllowlist with a reason)",
+						sel, d.prop, d.val, d.prop+": none", sel)
+				}
+			}
 		}
 	}
 	if tested == 0 {
@@ -777,6 +856,12 @@ func TestUIDefaultsResolveAndRebind(t *testing.T) {
 	if !strings.Contains(got, `aria-label="Pagination"`) {
 		t.Errorf("default label lost: %s", got)
 	}
+	// list-bar-search's aria-label default reuses rastrillo.ui.search_submit
+	// (see basecatalog.go) rather than a key of its own — resolve and
+	// rebind it the same way, so that reuse is actually exercised.
+	if got := render(t, "list-bar-search", map[string]any{}); !strings.Contains(got, `aria-label="Search"`) {
+		t.Errorf("default aria-label lost: %s", got)
+	}
 	// FuncsWith rebinds every default.
 	tmpl := template.Must(template.New("").Funcs(FuncsWith(func(key string, _ ...any) string {
 		return "X-" + key
@@ -788,16 +873,26 @@ func TestUIDefaultsResolveAndRebind(t *testing.T) {
 	if !strings.Contains(buf.String(), `aria-label="X-rastrillo.ui.pagination"`) {
 		t.Errorf("FuncsWith did not rebind T: %s", buf.String())
 	}
+	buf.Reset()
+	if err := tmpl.ExecuteTemplate(&buf, "list-bar-search", map[string]any{}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(buf.String(), `aria-label="X-rastrillo.ui.search_submit"`) {
+		t.Errorf("FuncsWith did not rebind list-bar-search's aria-label default: %s", buf.String())
+	}
 }
 
 // A caller-supplied value always wins over T's default — the T threading
-// must never override an explicit Label/CancelLabel.
+// must never override an explicit Label/CancelLabel/Placeholder.
 func TestUIDefaultsYieldToExplicitValues(t *testing.T) {
 	if got := render(t, "pagination", map[string]any{"Label": "Paginación"}); !strings.Contains(got, `aria-label="Paginación"`) {
 		t.Errorf("explicit Label lost to T's default: %s", got)
 	}
 	if got := render(t, "list-search-submit", map[string]any{"Label": "Buscar"}); !strings.Contains(got, ">Buscar<") {
 		t.Errorf("explicit Label lost to T's default: %s", got)
+	}
+	if got := render(t, "list-bar-search", map[string]any{"Placeholder": "Buscar entradas"}); !strings.Contains(got, `aria-label="Buscar entradas"`) {
+		t.Errorf("explicit Placeholder lost to T's default: %s", got)
 	}
 	got := render(t, "confirm-form", map[string]any{
 		"Action": "/x", "Label": "Delete", "CancelHref": "/x", "CancelLabel": "Never mind",

@@ -5,10 +5,14 @@ package rastrillo
 // key"). Keys are namespaced rastrillo.ui.* so an app catalog can
 // override any of them per locale without colliding with app keys.
 //
-// This list must exactly match the defaults ui's partials fall back to
-// via {{T "rastrillo.ui.*"}} — one key per hardcoded English default a
-// partial carries, no more. See ui/funcs.go's defaultT and the partials
-// it backs (pagination, list-search-submit, confirm-form).
+// This list must exactly match the distinct English strings ui's
+// partials fall back to via {{T "rastrillo.ui.*"}} — one key per
+// distinct string, no more; a key may back more than one {{T ...}} call
+// when their hardcoded English values coincide (list-bar-search's
+// aria-label default reuses rastrillo.ui.search_submit rather than
+// declaring a fourth key, since both read "Search"). See ui/funcs.go's
+// defaultT and the partials it backs (pagination, list-search-submit,
+// list-bar-search, confirm-form).
 var baseCatalog = Catalog{
 	"rastrillo.ui.pagination":    "Pagination",
 	"rastrillo.ui.search_submit": "Search",

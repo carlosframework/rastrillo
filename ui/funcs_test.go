@@ -90,6 +90,45 @@ func TestDefaultTResolvesBaseCatalogAndFallsBackToKey(t *testing.T) {
 	}
 }
 
+// TestFuncsWithRebindsOnAClonedPristineTree proves the seam FuncsWith's
+// doc comment now documents: html/template refuses to Clone a tree that
+// has already executed ("cannot Clone ... after it has executed"), so
+// the only way to rebind T per request is to keep one base tree pristine
+// — parsed once, never itself passed to Execute/ExecuteTemplate — and
+// Clone+rebind it fresh for every request. This exercises exactly that:
+// base is never executed; only its clone is, with T rebound on the clone
+// after Clone returns.
+func TestFuncsWithRebindsOnAClonedPristineTree(t *testing.T) {
+	base := template.Must(template.New("").Funcs(Funcs()).ParseFS(Templates(), "*.html"))
+
+	perReq, err := base.Clone()
+	if err != nil {
+		t.Fatalf("Clone of a never-executed tree must succeed: %v", err)
+	}
+	perReq.Funcs(FuncsWith(func(key string, _ ...any) string {
+		return "X-" + key
+	}))
+
+	var buf strings.Builder
+	if err := perReq.ExecuteTemplate(&buf, "pagination", map[string]any{}); err != nil {
+		t.Fatalf("ExecuteTemplate on the clone: %v", err)
+	}
+	if !strings.Contains(buf.String(), `aria-label="X-rastrillo.ui.pagination"`) {
+		t.Errorf("rebound T did not take effect on the clone: %s", buf.String())
+	}
+
+	// The clone's rebind must not leak back into the pristine base tree —
+	// base still resolves T through Funcs' own default. This is base's
+	// first execution, which Clone (already called, above) permits.
+	var baseBuf strings.Builder
+	if err := base.ExecuteTemplate(&baseBuf, "pagination", map[string]any{}); err != nil {
+		t.Fatalf("ExecuteTemplate on base: %v", err)
+	}
+	if !strings.Contains(baseBuf.String(), `aria-label="Pagination"`) {
+		t.Errorf("Clone must not mutate the pristine base tree's own T: %s", baseBuf.String())
+	}
+}
+
 // FuncsWith replaces only the T entry — dict/list/icon are unchanged.
 func TestFuncsWithReplacesOnlyT(t *testing.T) {
 	f := FuncsWith(func(key string, _ ...any) string { return "X-" + key })

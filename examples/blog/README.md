@@ -2,10 +2,11 @@
 
 A single-user blog: a public reading side (index, one post per page) and
 an admin section for writing, editing, publishing and deleting. Ten
-actions on rastrillo's filesystem router, one SQLite table, every one of
-the `ui` package's eight partials in its intended role, and **no
-JavaScript** — no `<script>` tag anywhere, no off-origin reference on any
-page. The look is `static/tokens.css` unedited plus about fifty app-owned
+actions on rastrillo's filesystem router, one SQLite table, the eight
+List-screen partials this app itself uses (of the larger set `ui` now
+ships — see `ui`'s package doc for the full, current list) each in its
+intended role, and **no JavaScript** — no `<script>` tag anywhere, no
+off-origin reference on any page. The look is `static/tokens.css` unedited plus about fifty app-owned
 lines in `static/blog.css`.
 
 `examples/helloworld` proves the framework's plumbing (scaffold,

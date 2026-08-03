@@ -31,16 +31,27 @@ func Funcs() template.FuncMap {
 
 // FuncsWith is Funcs with the T entry replaced — the seam for an app
 // that wants ui's partial defaults resolved in the request's locale
-// instead of the framework's hardcoded English. Reparse (or Clone) the
-// template tree with the rebound map and re-bind on every request:
+// instead of the framework's hardcoded English.
 //
-//	tmpl := template.Must(template.New("").Funcs(ui.Funcs()).
+// html/template forbids Clone once a tree has executed even once
+// (html/template: cannot Clone <name> after it has executed), so the
+// tree registered with FuncsWith's rebind must stay pristine — parsed
+// once at startup, never itself passed to Execute/ExecuteTemplate — and
+// every request works off a Clone of it instead:
+//
+//	base := template.Must(template.New("").Funcs(ui.Funcs()).
 //	        ParseFS(ui.Templates(), "*.html"))
-//	...
-//	perReq, _ := tmpl.Clone()
+//	// base is never executed directly from here on.
+//
+//	// Per request:
+//	perReq, err := base.Clone()
+//	if err != nil {
+//	        return err
+//	}
 //	perReq.Funcs(ui.FuncsWith(func(key string, _ ...any) string {
 //	        return rastrillo.T(r, key)
 //	}))
+//	return perReq.ExecuteTemplate(w, "some-page", data)
 //
 // dict, list and icon are unchanged from Funcs — only T moves.
 func FuncsWith(t func(key string, args ...any) string) template.FuncMap {
