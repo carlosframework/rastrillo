@@ -37,6 +37,28 @@ rather than to cover the full design. **Built:**
   dir. Hibernation requires nothing else from the app: the activator
   owns the restore/replicate cycle, and `Serve`'s SIGTERM drain fits
   inside its SIGKILL budget.
+- **Localization** (design doc §10) — `Options.Locales`/`DefaultLocale`/
+  `LocaleFS` declare an app's locale set and supply its catalogs from an
+  `embed.FS` carrying `locales/<code>.toml` (flat `key = "value"` TOML).
+  Each request resolves a locale in order: URL path prefix (stripped
+  before the app's mux sees it, so `/fr/orders` and `/orders` reach the
+  same route), then `Accept-Language` (q-ordered, so a browser sending
+  `fr-CA` matches a declared `fr`), then the `rastrillo_locale` cookie,
+  then the default. Actions call request-scoped `rastrillo.T(r, key)` /
+  `Tf(r, key, args...)` (`{name}` interpolation) for translated strings;
+  lookup falls back through the requested locale's catalog, the default
+  locale's catalog, the framework's base catalog, and finally the key
+  itself — a missing translation stays visible on the page, never blank.
+  `rastrillo generate --check [--default-locale <code>]` fails loudly
+  when a non-default catalog is missing keys the default has (§10's
+  "silent fallback while iterating, loud failure before ship"), and
+  `rastrillo dev` now watches `locales/` and `templates/` too, on top of
+  its existing directories. Two honest caveats: an app that declares
+  locale `en` can't serve an app route whose first path segment is also
+  `en` — inherent to prefix routing, not a bug to fix; and a `ServeMux`
+  trailing-slash redirect issued under a locale prefix currently emits
+  the unprefixed path, dropping the locale on that one redirect (known
+  limitation).
 - **`rastrillo.Serve`** — the bootstrap (design doc §5): the SQLite
   pragma-ordering fix, `SetMaxOpenConns(1)`, additive migrations; the
   platform's activation contract (`Options.Socket`/`Options.Addr`/systemd
@@ -53,7 +75,7 @@ rather than to cover the full design. **Built:**
 stubbed here: the manifest system (`Resource`/`List`/`Form`, TOML sugar,
 codegen-with-skip), `sqlc` query colocation, the `Mergeable` event-sourced
 store shape, blobs, the crypto core, WebAuthn, the agents system, the
-component/UI vocabulary, localization, and the preloaded `CLAUDE.md`/skill
+component/UI vocabulary, and the preloaded `CLAUDE.md`/skill
 scaffolding. Each is a real, separate piece of work — see the design doc
 for the shape of each.
 
