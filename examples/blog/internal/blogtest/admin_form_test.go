@@ -36,7 +36,7 @@ func TestCreateRedirectsToTheNewPostsEditPage(t *testing.T) {
 	})
 	wantStatus(t, rec, http.StatusSeeOther)
 
-	posts, err := blog.List(db, "", 0, blog.PageSize)
+	posts, err := blog.List(db, "", "", 0, blog.PageSize)
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestCreateWithAnEmptyTitleIs400AndCreatesNothing(t *testing.T) {
 	// costs the writer what they typed.
 	wantContains(t, body, "Body the writer typed.")
 
-	n, err := blog.Count(db, "")
+	n, err := blog.Count(db, "", "")
 	if err != nil {
 		t.Fatalf("count: %v", err)
 	}

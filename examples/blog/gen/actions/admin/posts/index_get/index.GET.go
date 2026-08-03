@@ -14,17 +14,17 @@ func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	page := blog.PageParam(r)
 
-	all, err := blog.Count(ctx.DB, "")
+	all, err := blog.Count(ctx.DB, "", "")
 	if err != nil {
 		blog.Fail(ctx, w, "counting posts", err)
 		return
 	}
-	total, err := blog.Count(ctx.DB, q)
+	total, err := blog.Count(ctx.DB, q, "")
 	if err != nil {
 		blog.Fail(ctx, w, "counting matching posts", err)
 		return
 	}
-	posts, err := blog.List(ctx.DB, q, blog.Offset(page), blog.PageSize)
+	posts, err := blog.List(ctx.DB, q, "", blog.Offset(page), blog.PageSize)
 	if err != nil {
 		blog.Fail(ctx, w, "loading posts", err)
 		return

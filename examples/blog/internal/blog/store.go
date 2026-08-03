@@ -96,19 +96,35 @@ func CountPublished(db *sql.DB) (int, error) {
 	return n, err
 }
 
-// List returns posts of any status, newest first, filtered by a title
-// search when q is non-empty.
-func List(db *sql.DB, q string, offset, limit int) ([]Post, error) {
-	if q == "" {
-		rows, err := db.Query(`SELECT `+selectColumns+` FROM posts
-			ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, limit, offset)
-		if err != nil {
-			return nil, err
-		}
-		return collect(rows)
+// listWhere builds the WHERE clause List and Count share. A status
+// outside draft/published means no status condition — the handler
+// normalizes, and the store stays forgiving about raw values.
+func listWhere(q, status string) (string, []any) {
+	var conds []string
+	var args []any
+	if q != "" {
+		conds = append(conds, `title LIKE ? ESCAPE '\'`)
+		args = append(args, likePattern(q))
 	}
-	rows, err := db.Query(`SELECT `+selectColumns+` FROM posts WHERE title LIKE ? ESCAPE '\'
-		ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, likePattern(q), limit, offset)
+	switch status {
+	case "draft":
+		conds = append(conds, "published = 0")
+	case "published":
+		conds = append(conds, "published = 1")
+	}
+	if len(conds) == 0 {
+		return "", nil
+	}
+	return " WHERE " + strings.Join(conds, " AND "), args
+}
+
+// List returns posts newest first, filtered by a title search when q is
+// non-empty and by status ("draft" or "published") when set.
+func List(db *sql.DB, q, status string, offset, limit int) ([]Post, error) {
+	where, args := listWhere(q, status)
+	args = append(args, limit, offset)
+	rows, err := db.Query(`SELECT `+selectColumns+` FROM posts`+where+`
+		ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -116,14 +132,10 @@ func List(db *sql.DB, q string, offset, limit int) ([]Post, error) {
 }
 
 // Count counts the posts List would page through.
-func Count(db *sql.DB, q string) (int, error) {
+func Count(db *sql.DB, q, status string) (int, error) {
+	where, args := listWhere(q, status)
 	var n int
-	var err error
-	if q == "" {
-		err = db.QueryRow(`SELECT COUNT(*) FROM posts`).Scan(&n)
-	} else {
-		err = db.QueryRow(`SELECT COUNT(*) FROM posts WHERE title LIKE ? ESCAPE '\'`, likePattern(q)).Scan(&n)
-	}
+	err := db.QueryRow(`SELECT COUNT(*) FROM posts`+where, args...).Scan(&n)
 	return n, err
 }
 
