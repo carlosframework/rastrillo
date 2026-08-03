@@ -16,7 +16,11 @@ rather than to cover the full design. **Built:**
   `go build` works immediately.
 - **`rastrillo generate [dir]`** — the filesystem-routing generator
   (design doc §4): walks `actions/`, emits `gen/router.go` on a Go 1.22
-  `http.ServeMux`. Fails loudly on route collisions.
+  `http.ServeMux`. Fails loudly on route collisions. Action files carry
+  `//go:build rastrillo_actions` (scaffolded for you; stripped from the
+  compiled copies under `gen/`) so `go build ./...`, `go vet ./...` and
+  `go test ./...` skip generator input instead of failing on it —
+  `generate --check` names any file missing the constraint.
 - **`rastrillo dev [dir] [-- app args]`** — the development watch loop
   (design doc §11): watches `app/`, `actions/`, `manifest/`, `cmd/`,
   `locales/`, and `templates/` by polling. On any change, reruns `rastrillo
@@ -37,7 +41,10 @@ rather than to cover the full design. **Built:**
   when systemd provides one, since a unit tenant's cwd isn't its state
   dir. Hibernation requires nothing else from the app: the activator
   owns the restore/replicate cycle, and `Serve`'s SIGTERM drain fits
-  inside its SIGKILL budget.
+  inside its SIGKILL budget. `rastrillo.Resolve` is the same resolution
+  without the serving, for apps that need the resolved invocation first
+  — `examples/blog` opens its own database from the resolved path
+  before building its mux.
 - **`rastrillo.Serve`** — the bootstrap (design doc §5): the SQLite
   pragma-ordering fix, `SetMaxOpenConns(1)`, additive migrations; the
   platform's activation contract (`Options.Socket`/`Options.Addr`/systemd

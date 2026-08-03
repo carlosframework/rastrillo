@@ -92,8 +92,9 @@ func TestAdminPaginationAppearsOnlyPastOnePage(t *testing.T) {
 	wantContains(t, body, `<nav class="rst-pagination"`)
 	wantContains(t, body, `<span aria-current="page">1</span>`)
 	wantContains(t, body, `<a href="/admin/posts?page=2">2</a>`)
-	// Previous is present but not actionable on page 1.
-	wantContains(t, body, `<span>Previous</span>`)
+	// Previous is present but not actionable on page 1 — and visibly
+	// so: the class is what tokens.css styles (friction log F10).
+	wantContains(t, body, `<span class="rst-pagination__disabled">Previous</span>`)
 }
 
 // html/template escapes & inside an attribute value, so the preserved

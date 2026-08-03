@@ -59,3 +59,29 @@ func TestMainTemplateServesTheStaticDir(t *testing.T) {
 		t.Error("the static handler is registered before gen.Router builds the mux")
 	}
 }
+
+// F9 end to end: a fresh scaffold's action file carries the build
+// constraint, the gen copy doesn't, and --check passes as scaffolded.
+func TestNewScaffoldsTaggedActions(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := runNew([]string{"tagapp"}); err != nil {
+		t.Fatalf("runNew: %v", err)
+	}
+	src, err := os.ReadFile(filepath.Join("tagapp", "actions", "index.GET.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), "//go:build rastrillo_actions") {
+		t.Errorf("scaffolded action lacks the build constraint:\n%s", src)
+	}
+	gen, err := os.ReadFile(filepath.Join("tagapp", "gen", "actions", "index_get", "index.GET.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(gen), "//go:build") {
+		t.Errorf("gen copy kept the build constraint:\n%s", gen)
+	}
+	if err := runGenerate([]string{"--check", "tagapp"}); err != nil {
+		t.Errorf("--check must pass on a fresh scaffold: %v", err)
+	}
+}

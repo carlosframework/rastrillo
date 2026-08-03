@@ -29,11 +29,23 @@ import (
 // from the app: the activator owns the restore/replicate cycle, and
 // Serve's SIGTERM drain (10s) fits inside the activator's 20s budget.
 func Run(opts Options) error {
-	opts, err := resolveInvocation(opts, os.Args[1:], os.Getenv("STATE_DIRECTORY"))
+	opts, err := Resolve(opts)
 	if err != nil {
 		return err
 	}
 	return Serve(opts)
+}
+
+// Resolve applies the platform's activation argv and environment to
+// opts — everything Run does short of serving — and returns the result.
+// Most apps just call Run; Resolve is the seam for the ones that need
+// the resolved invocation first. The motivating case is an app that
+// opens its own database handle before building its mux (Serve's DBPath
+// opens one it never hands back — see examples/blog and its friction
+// log's F4): it resolves, opens opts.DBPath itself, blanks it so Serve
+// won't open a second handle on the same file, and calls Serve.
+func Resolve(opts Options) (Options, error) {
+	return resolveInvocation(opts, os.Args[1:], os.Getenv("STATE_DIRECTORY"))
 }
 
 // resolveInvocation applies one activation argv to opts. Split from Run

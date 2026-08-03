@@ -1,3 +1,5 @@
+//go:build rastrillo_actions
+
 package actions
 
 import (

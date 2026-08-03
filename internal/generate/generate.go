@@ -14,6 +14,15 @@
 // version could instead lift just the Handle function via full AST
 // extraction to stay closer to "one arbitrary file, no package
 // boilerplate," but that's real complexity deferred rather than rushed.
+//
+// The same never-compiled-in-place fact is why action files carry a
+// `//go:build rastrillo_actions` constraint (BuildTag; friction log F9
+// in examples/blog): without it, every `go build ./...` from the app
+// root tries to compile actions/ — duplicate Handles in any
+// multi-action directory, and a `[id]` directory is a malformed import
+// path — so ./... always fails. The constraint makes the go tool skip
+// the originals entirely; Rewrite strips it from the gen/ copies, which
+// are the form that must compile.
 package generate
 
 import (
@@ -31,6 +40,12 @@ import (
 )
 
 var actionFileRe = regexp.MustCompile(`^(.+)\.(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\.go$`)
+
+// BuildTag is the build constraint every action file carries
+// (`//go:build rastrillo_actions`). It is never satisfied by a normal
+// build, so `go build ./...`, `go vet ./...` and `go test ./...` skip
+// actions/ instead of failing on generator input.
+const BuildTag = "rastrillo_actions"
 
 // Action is one discovered actions/ file.
 type Action struct {
@@ -170,7 +185,10 @@ func sanitizeIdent(s string) string {
 // Rewrite parses the action file at actionsDir/a.SourcePath, rewrites
 // only its package clause to a.PackageName, and writes the result to
 // genDir/actions/a.GenDir/<basename>. The rest of the file — imports,
-// the Handle function, any helpers — travels unmodified.
+// the Handle function, any helpers — travels unmodified, with one
+// exception: any build-constraint comment (the BuildTag convention, or
+// a legacy `// +build` line) is stripped, because the copy is the form
+// that must compile and a surviving constraint would exclude it too.
 func Rewrite(actionsDir, genDir string, a Action) error {
 	src := filepath.Join(actionsDir, filepath.FromSlash(a.SourcePath))
 	fset := token.NewFileSet()
@@ -183,6 +201,18 @@ func Rewrite(actionsDir, genDir string, a Action) error {
 	}
 	file.Name = ast.NewIdent(a.PackageName)
 
+	if file.Doc != nil && isConstraintGroup(file.Doc) {
+		file.Doc = nil
+	}
+	var kept []*ast.CommentGroup
+	for _, g := range file.Comments {
+		if g.End() < file.Package && isConstraintGroup(g) {
+			continue
+		}
+		kept = append(kept, g)
+	}
+	file.Comments = kept
+
 	var buf bytes.Buffer
 	if err := format.Node(&buf, fset, file); err != nil {
 		return fmt.Errorf("format %s: %w", a.SourcePath, err)
@@ -194,6 +224,52 @@ func Rewrite(actionsDir, genDir string, a Action) error {
 	}
 	outPath := filepath.Join(outDir, filepath.Base(src))
 	return os.WriteFile(outPath, buf.Bytes(), 0o644)
+}
+
+// isConstraintGroup reports whether any line of g is a build-constraint
+// comment: `//go:build ...`, or the legacy `// +build ...` spelling that
+// gofmt keeps alongside it in pre-1.17 files.
+func isConstraintGroup(g *ast.CommentGroup) bool {
+	for _, c := range g.List {
+		text := strings.TrimSpace(c.Text)
+		if strings.HasPrefix(text, "//go:build ") || strings.HasPrefix(text, "// +build ") {
+			return true
+		}
+	}
+	return false
+}
+
+// UntaggedActions returns the SourcePaths of the given actions whose
+// files lack the BuildTag constraint — files `go build ./...` would try
+// (and fail) to compile. `rastrillo generate --check` fails on these
+// with the exact lines to add.
+func UntaggedActions(actionsDir string, actions []Action) ([]string, error) {
+	var out []string
+	for _, a := range actions {
+		src, err := os.ReadFile(filepath.Join(actionsDir, filepath.FromSlash(a.SourcePath)))
+		if err != nil {
+			return nil, err
+		}
+		if !HasBuildTag(src) {
+			out = append(out, a.SourcePath)
+		}
+	}
+	return out, nil
+}
+
+// HasBuildTag reports whether src carries a `//go:build` constraint
+// naming BuildTag above its package clause.
+func HasBuildTag(src []byte) bool {
+	for _, line := range strings.Split(string(src), "\n") {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "package ") {
+			return false
+		}
+		if strings.HasPrefix(t, "//go:build") && strings.Contains(t, BuildTag) {
+			return true
+		}
+	}
+	return false
 }
 
 // Router renders gen/router.go: one import per action package, one

@@ -40,14 +40,16 @@ inventing a password field (F7).
 ## The commands that work
 
 ```
-go build ./cmd/blog
-go test ./internal/...
-go vet ./cmd/... ./gen/... ./internal/...
+go build ./cmd/blog     # the binary (./... would discard it — go help build)
+go test ./...
+go vet ./...
 ```
 
-`go build ./...`, `go vet ./...` and `go test ./...` all **fail** — see
-F9. That is a property of every rastrillo app with more than one action,
-not of this one.
+`./...` works because every action file carries `//go:build
+rastrillo_actions` — the F9 fix. Without the constraint, `go build
+./...`, `go vet ./...` and `go test ./...` all failed here: actions/ is
+generator input the go tool tried to compile anyway. See F9 below for
+the original finding and its resolution.
 
 ## How it is put together
 
@@ -124,6 +126,11 @@ hand-copies the pragma DSN — `busy_timeout` before `journal_mode(WAL)`,
 then `SetMaxOpenConns(1)` — which is precisely the hand-propagation the
 framework exists to end. Next slice: return the handle from `Serve`, or
 let `Options` carry the Ctx factory.
+*Eased, not fixed:* `rastrillo.Resolve` now applies the activation
+contract without serving, so this app honors `-db`, `serve`, and
+`$STATE_DIRECTORY` while still opening its own handle (see
+`cmd/blog/main.go`). The hand-copied pragma DSN remains — the real fix
+is still the next-slice shape above.
 
 **F5 — `actions/` cannot hold shared code, by two rules.** The generator
 copies only files matching `<name>.<VERB>.go`, and separately skips any
@@ -155,6 +162,13 @@ Go import path — which is what every `./...` invocation trips over first,
 one directory. The working commands are listed above; the framework
 should say so in `rastrillo new`'s output, and could remove the problem
 entirely by reading actions from a directory the Go tool ignores.
+*Fixed:* action files now carry `//go:build rastrillo_actions` — never
+satisfied by a normal build, so every `./...` invocation skips
+generator input (including the `[id]` directories) instead of failing
+on it. `rastrillo new` scaffolds the constraint, `rastrillo generate`
+strips it from the `gen/` copies, and `generate --check` fails with the
+exact line to add when a file lacks it. This app is tagged; its
+`./...` commands pass.
 
 **F10 — `tokens.css` still styles a pagination state the partial no
 longer emits.** `ui/partials/pagination.html` renders a disabled item as
@@ -168,3 +182,7 @@ The fix belongs in the library — either restore the attribute on the
 span, or restyle the rule to target the disabled item as the partial
 actually emits it — and not in an example, so this branch changes
 nothing.
+*Fixed:* in the library, the second way — the span now carries
+`class="rst-pagination__disabled"` and tokens.css styles that class.
+`aria-disabled` stays dropped on purpose: the attribute belongs on
+elements with an interactive role, and a bare span has none.

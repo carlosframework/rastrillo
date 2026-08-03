@@ -149,3 +149,112 @@ func contains(s, sub string) bool {
 		return false
 	})()
 }
+
+// writeTaggedAction is writeAction with a build constraint above the
+// package clause — the shape rastrillo new scaffolds (F9).
+func writeTaggedAction(t *testing.T, dir, rel, constraint string) {
+	t.Helper()
+	full := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := constraint + "\n\npackage actions\n\nimport (\n\t\"net/http\"\n\n\t\"github.com/carlosframework/rastrillo\"\n)\n\nfunc Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {\n\tw.Write([]byte(\"ok\"))\n}\n"
+	if err := os.WriteFile(full, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The gen/ copy is the form that must compile, so the constraint that
+// keeps the go tool off the original must not travel with it.
+func TestRewriteStripsTheBuildConstraint(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		constraint string
+	}{
+		{"go:build", "//go:build " + BuildTag},
+		{"go:build with legacy line", "//go:build " + BuildTag + "\n// +build " + BuildTag},
+		{"explainer comment in the same group", "// generator input, never compiled in place\n//go:build " + BuildTag},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actionsDir := t.TempDir()
+			genDir := t.TempDir()
+			writeTaggedAction(t, actionsDir, "orders/[id]/cancel.POST.go", tc.constraint)
+
+			actions, _, err := Discover(actionsDir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := Rewrite(actionsDir, genDir, actions[0]); err != nil {
+				t.Fatal(err)
+			}
+			out := filepath.Join(genDir, "actions", filepath.FromSlash(actions[0].GenDir), "cancel.POST.go")
+			b, err := os.ReadFile(out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := string(b)
+			if contains(got, "//go:build") || contains(got, "+build") {
+				t.Errorf("build constraint survived into the gen copy:\n%s", got)
+			}
+			if !contains(got, "package "+actions[0].PackageName) {
+				t.Errorf("gen copy missing rewritten package clause:\n%s", got)
+			}
+			if !contains(got, "func Handle") {
+				t.Errorf("gen copy lost the Handle function:\n%s", got)
+			}
+		})
+	}
+}
+
+// An untagged file still rewrites — existing apps keep working; only
+// --check nags (see UntaggedActions).
+func TestRewriteToleratesAnUntaggedFile(t *testing.T) {
+	actionsDir := t.TempDir()
+	genDir := t.TempDir()
+	writeAction(t, actionsDir, "index.GET.go", "actions")
+
+	actions, _, err := Discover(actionsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Rewrite(actionsDir, genDir, actions[0]); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUntaggedActions(t *testing.T) {
+	actionsDir := t.TempDir()
+	writeTaggedAction(t, actionsDir, "index.GET.go", "//go:build "+BuildTag)
+	writeAction(t, actionsDir, "posts/index.GET.go", "actions")
+
+	actions, _, err := Discover(actionsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := UntaggedActions(actionsDir, actions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "posts/index.GET.go" {
+		t.Errorf("UntaggedActions = %v, want [posts/index.GET.go]", got)
+	}
+}
+
+func TestHasBuildTag(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		src  string
+		want bool
+	}{
+		{"tagged", "//go:build " + BuildTag + "\n\npackage actions\n", true},
+		{"untagged", "package actions\n", false},
+		{"different tag", "//go:build ignore\n\npackage actions\n", false},
+		{"tag after package clause does not count", "package actions\n\n//go:build " + BuildTag + "\n", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := HasBuildTag([]byte(tc.src)); got != tc.want {
+				t.Errorf("HasBuildTag = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

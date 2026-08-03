@@ -1,6 +1,7 @@
 package rastrillo
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -109,5 +110,26 @@ func TestResolveInvocationStrayPositional(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "bogus") {
 		t.Errorf("error = %q, want it to name the offending argument %q", err, "bogus")
+	}
+}
+
+// Resolve is Run minus the serving: it must read the real process argv
+// and environment, or an app using the seam resolves a different
+// invocation than Run would have.
+func TestResolveReadsProcessArgvAndEnv(t *testing.T) {
+	orig := os.Args
+	os.Args = []string{"app", "-socket", "/run/carlos/x.sock", "-db", "x.db"}
+	defer func() { os.Args = orig }()
+	t.Setenv("STATE_DIRECTORY", "/var/lib/app")
+
+	opts, err := Resolve(Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.Socket != "/run/carlos/x.sock" {
+		t.Errorf("Socket = %q", opts.Socket)
+	}
+	if opts.DBPath != "/var/lib/app/x.db" {
+		t.Errorf("DBPath = %q, want the -db value resolved inside $STATE_DIRECTORY", opts.DBPath)
 	}
 }
