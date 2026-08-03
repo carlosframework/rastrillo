@@ -2,9 +2,20 @@ package rastrillo
 
 import (
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 )
+
+// RenderFunc is how a generated action hands a page to the app's own
+// template tree — the seam generated code needs because it cannot
+// call an app-private helper (a hand-rolled blog.Render, say).
+// Ctx.Render carries it; the app's ctx factory sets it, and a
+// generated action nil-checks it before use. page is always one of
+// "<resource>/list", "<resource>/show" or "<resource>/form" —
+// internal/generate's action emitter documents and pins the exact
+// contract (see actions.go).
+type RenderFunc func(ctx *Ctx, w http.ResponseWriter, page string, status int, data any)
 
 var (
 	namePattern    = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
