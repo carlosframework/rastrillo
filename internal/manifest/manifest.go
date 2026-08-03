@@ -34,13 +34,6 @@ func decodeTOML(path string) (rastrillo.Resource, error) {
 	return r, nil
 }
 
-// goEval evaluates the Go-manifest half of dir (design doc §3: go/ast
-// discovery + a go-run driver). Task 3 implements it; until then it
-// contributes no resources.
-func goEval(moduleRoot, dir string) ([]rastrillo.Resource, error) {
-	return nil, nil
-}
-
 // source pairs a decoded resource with the file it came from, so
 // validation and duplicate errors can name it.
 type source struct {
@@ -70,13 +63,11 @@ func Load(moduleRoot, dir string) ([]rastrillo.Resource, error) {
 		sources = append(sources, source{r, path})
 	}
 
-	goResources, err := goEval(moduleRoot, dir)
+	goSources, err := goEval(moduleRoot, dir)
 	if err != nil {
 		return nil, err
 	}
-	for _, r := range goResources {
-		sources = append(sources, source{r, dir})
-	}
+	sources = append(sources, goSources...)
 
 	var resources []rastrillo.Resource
 	names := map[string]string{}
