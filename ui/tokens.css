@@ -253,9 +253,10 @@ body {
   inline-size: 1em;
 }
 
-/* Focus is visible everywhere inside a rastrillo component. :where()
-   contributes no specificity, so any rule below can override it. */
-:where(.rst-page-header, .rst-list, .rst-lbar, .rst-search, .rst-empty, .rst-pagination) :focus-visible {
+/* Focus is visible everywhere inside the app column (.rst-page) and
+   inside any component rendered outside one. :where() contributes no
+   specificity, so any rule below can override it. */
+:where(.rst-page, .rst-page-header, .rst-list, .rst-lbar, .rst-search, .rst-empty, .rst-pagination) :focus-visible {
   outline: 2px solid var(--rst-accent);
   outline-offset: 2px;
 }
@@ -367,6 +368,18 @@ body {
 }
 
 /* ── field family ─────────────────────────────────────────────────── */
+.rst-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rst-sp-2);
+  max-inline-size: 44rem;
+}
+.rst-form__foot {
+  display: flex;
+  gap: var(--rst-sp-3);
+  margin-block-start: var(--rst-sp-3);
+}
+
 .rst-field {
   display: flex;
   flex-direction: column;

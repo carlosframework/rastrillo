@@ -773,3 +773,34 @@ func TestFieldTextareaMinimalFixture(t *testing.T) {
 		t.Errorf("rows rendered without the key: %s", got)
 	}
 }
+
+func TestFormFootRendersSubmitAndCancel(t *testing.T) {
+	got := render(t, "form-foot", map[string]any{
+		"Submit": "Save", "CancelHref": "/admin/posts", "CancelLabel": "Back to posts",
+	})
+	for _, want := range []string{
+		`<div class="rst-form__foot">`,
+		`<button class="rst-btn rst-btn--primary" type="submit">Save</button>`,
+		`<a class="rst-btn" href="/admin/posts">Back to posts</a>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+func TestFormFootMinimalFixture(t *testing.T) {
+	got := render(t, "form-foot", map[string]any{"Submit": "Create"})
+	if strings.Contains(got, "<a ") {
+		t.Errorf("cancel link rendered without CancelHref: %s", got)
+	}
+}
+
+// F2's second half: the focus ring covers the whole app column, so a
+// hand-rolled control inside .rst-page no longer restates the outline.
+func TestFocusRingScopeIncludesThePageColumn(t *testing.T) {
+	css := string(TokensCSS())
+	if !strings.Contains(css, ":where(.rst-page,") {
+		t.Error("tokens.css :focus-visible scope does not start with .rst-page")
+	}
+}
