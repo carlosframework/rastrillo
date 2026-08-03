@@ -26,15 +26,15 @@ const pollInterval = 250 * time.Millisecond
 // calls the same runGenerate that CI calls — one code path, not two.
 // Everything after -- is passed to the app verbatim (e.g. -addr :9000).
 func runDev(args []string) error {
-	args, appArgs := splitAppArgs(args)
-	dir := "."
-	if len(args) > 0 {
-		if strings.HasPrefix(args[0], "-") {
-			return fmt.Errorf("unexpected flag %q before app directory — pass app flags after \"--\" (e.g. rastrillo dev -- %s)", args[0], args[0])
-		}
-		dir = args[0]
+	dir, appArgs, help, err := parseDevArgs(args)
+	if err != nil {
+		return err
 	}
-	dir, err := filepath.Abs(dir)
+	if help {
+		devUsage()
+		return nil
+	}
+	dir, err = filepath.Abs(dir)
 	if err != nil {
 		return err
 	}
@@ -138,7 +138,11 @@ func runDev(args []string) error {
 			// in init) would otherwise sit invisible until someone
 			// noticed. child/exitCh go nil so stop() won't later signal
 			// a process that's already gone.
-			fmt.Fprintf(os.Stderr, "rastrillo dev: app exited: %v — will restart on next change\n", err)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "rastrillo dev: app exited: %v — will restart on next change\n", err)
+			} else {
+				fmt.Fprintln(os.Stderr, "rastrillo dev: app exited (status 0) — will restart on next change")
+			}
 			child, exitCh = nil, nil
 		case <-ticker.C:
 			next, err := devloop.Snapshot(dir, watchDirs)
@@ -179,6 +183,42 @@ func splitAppArgs(args []string) (own, app []string) {
 		}
 	}
 	return args, nil
+}
+
+// parseDevArgs validates and resolves `rastrillo dev`'s own arguments
+// (everything before "--"): at most one positional directory, no bare
+// flags. It does not touch the filesystem, so it's testable without
+// starting the watch loop. When help is true, dir and appArgs are unset
+// and the caller should print usage and return without doing anything
+// else.
+func parseDevArgs(args []string) (dir string, appArgs []string, help bool, err error) {
+	args, appArgs = splitAppArgs(args)
+	if len(args) == 0 {
+		return ".", appArgs, false, nil
+	}
+	switch args[0] {
+	case "-h", "-help", "--help":
+		return "", nil, true, nil
+	}
+	if strings.HasPrefix(args[0], "-") {
+		return "", nil, false, fmt.Errorf("unexpected flag %q before app directory — pass app flags after \"--\" (e.g. rastrillo dev -- %s)", args[0], args[0])
+	}
+	if len(args) > 1 {
+		return "", nil, false, fmt.Errorf("unexpected argument %q after app directory — pass app flags after \"--\" (e.g. rastrillo dev . -- %s)", args[1], args[1])
+	}
+	return args[0], appArgs, false, nil
+}
+
+// devUsage prints `rastrillo dev`'s own usage to stdout, for -h/-help/
+// --help — a help request is not an error, so it must not go to stderr
+// or set a non-zero exit code.
+func devUsage() {
+	fmt.Print(`usage: rastrillo dev [dir] [-- app args...]
+
+Watches actions/, app/, manifest/, and cmd/ (default dir: .); on any
+change it regenerates, rebuilds, and restarts the app. Everything after
+"--" is passed to the app verbatim (e.g. rastrillo dev . -- -addr :9000).
+`)
 }
 
 // findAppPkg locates the app's main package: exactly one directory under
