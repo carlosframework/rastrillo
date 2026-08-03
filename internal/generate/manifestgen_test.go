@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/carlosframework/rastrillo"
 	"github.com/carlosframework/rastrillo/internal/manifest"
 )
 
@@ -354,4 +355,43 @@ func snapshotTree(t *testing.T, dir string) map[string]string {
 		t.Fatal(err)
 	}
 	return out
+}
+
+// TestEmitPipelineCatchesTheSanitizeIdentPathCollision covers the one
+// cross-resource gen-path collision manifest.Load's own Name/Route
+// uniqueness checks cannot catch (manifestgen.go's own doc comment on
+// emitPipeline): two distinct, individually valid routes whose path
+// segments differ only by "-" vs "_" collapse onto the identical
+// gen/actions/ leaf directory once genDirFor's sanitizeIdent folds
+// both separators to the same character.
+func TestEmitPipelineCatchesTheSanitizeIdentPathCollision(t *testing.T) {
+	r1 := rastrillo.Resource{
+		Name:  "aaa",
+		Route: "/foo-bar",
+		List:  rastrillo.List{Columns: []rastrillo.Column{{Field: "Title"}}},
+	}
+	if err := r1.Validate(); err != nil {
+		t.Fatalf("r1.Validate: %v", err)
+	}
+	r2 := rastrillo.Resource{
+		Name:  "bbb",
+		Route: "/foo_bar",
+		List:  rastrillo.List{Columns: []rastrillo.Column{{Field: "Title"}}},
+	}
+	if err := r2.Validate(); err != nil {
+		t.Fatalf("r2.Validate: %v", err)
+	}
+
+	root := newScratchModule(t, false)
+	genDir := filepath.Join(root, "gen")
+	_, err := emitPipeline(root, genDir, []rastrillo.Resource{r1, r2}, false)
+	if err == nil {
+		t.Fatal("want a generated-file collision error: /foo-bar and /foo_bar collapse to the same gen/actions/ path")
+	}
+	if !strings.Contains(err.Error(), "collision") {
+		t.Errorf("error should say collision: %v", err)
+	}
+	if !strings.Contains(err.Error(), "aaa") || !strings.Contains(err.Error(), "bbb") {
+		t.Errorf("error should name both colliding resources: %v", err)
+	}
 }
