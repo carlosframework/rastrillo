@@ -64,11 +64,27 @@ func TestRunSqlcMissingToolSaysHowToAddIt(t *testing.T) {
 
 // TestRunSqlcGeneratesCompilingStore is the slice's heaviest
 // integration test: it fetches the real sqlc binary over the network
-// (via the module's own tool directive), runs Task 5's emitted store
-// through it, and builds the result. If the fetch fails for network
-// reasons, this test skips rather than fails — Task 10 (blog adoption)
-// exercises the identical path in CI, so a skip here is not silent
-// coverage loss.
+// (via the module's own tool directive), runs the store emitter's
+// output for TWO resource shapes through it, emits Task 8's actions
+// against the same real sqlc output, and builds the whole module. If
+// the fetch fails for network reasons, this test skips rather than
+// fails — Task 10 (blog adoption) exercises the identical path in CI,
+// so a skip here is not silent coverage loss.
+//
+// Two fixtures, not one, on purpose: fixtureResource ("notes") has
+// both List.Search and a List.Filter, so its Count/List queries always
+// have at least one bind parameter and sqlc always generates a
+// Params struct for them. noAdvancedFixtureResource ("widgets") has
+// neither — its Count query has ZERO bind parameters, and sqlc's own
+// convention (discovered the hard way during Task 8's self-review,
+// see task-8-report.md) is to drop the Params argument from the
+// generated method entirely rather than emit an empty struct type.
+// EmitActions' index.GET builder has to match that exactly or the
+// generated action fails to compile against the real store — a
+// mismatch a hand-written stub can hide (it did, briefly) but this
+// real-sqlc round trip cannot: if a future sqlc version changes this
+// convention, this test — not just TestEmitActionsCompile's stub —
+// will fail loudly.
 func TestRunSqlcGeneratesCompilingStore(t *testing.T) {
 	root := newScratchModule(t, true)
 
@@ -78,8 +94,10 @@ func TestRunSqlcGeneratesCompilingStore(t *testing.T) {
 		t.Skipf("go get -tool sqlc failed (likely a network issue): %v\n%s", err, out)
 	}
 
-	r := fixtureResource()
-	if _, err := EmitStore(filepath.Join(root, "gen"), []rastrillo.Resource{r}); err != nil {
+	genDir := filepath.Join(root, "gen")
+	notes := fixtureResource()
+	widgets := noAdvancedFixtureResource()
+	if _, err := EmitStore(genDir, []rastrillo.Resource{notes, widgets}); err != nil {
 		t.Fatalf("EmitStore: %v", err)
 	}
 
@@ -87,9 +105,17 @@ func TestRunSqlcGeneratesCompilingStore(t *testing.T) {
 		t.Fatalf("RunSqlc: %v", err)
 	}
 
-	// The point of this test over EmitStore's own golden tests (which
-	// never invoke sqlc or the Go compiler): the emitted store must
-	// actually compile once sqlc has generated Go from it.
+	if _, _, err := EmitActions(root, genDir, notes); err != nil {
+		t.Fatalf("EmitActions(notes): %v", err)
+	}
+	if _, _, err := EmitActions(root, genDir, widgets); err != nil {
+		t.Fatalf("EmitActions(widgets): %v", err)
+	}
+
+	// The point of this test over EmitStore/EmitActions' own golden
+	// tests (which never invoke sqlc or the Go compiler): the emitted
+	// store AND the emitted actions must actually compile together
+	// once sqlc has generated real Go from the store side.
 	buildCmd := exec.Command("go", "build", "./...")
 	buildCmd.Dir = root
 	if out, err := buildCmd.CombinedOutput(); err != nil {
