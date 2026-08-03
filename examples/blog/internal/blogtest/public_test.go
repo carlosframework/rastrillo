@@ -81,6 +81,20 @@ func TestPostToAnUnmatchedPathIs404(t *testing.T) {
 	wantStatus(t, rec, http.StatusNotFound)
 }
 
+// POST to "/" — a path with a registered GET handler but no POST — returns
+// 405 with the allowed methods. Ensuring this isn't regressed by a
+// reappearing catch-all guard is important for the mux's error handling
+// contract.
+func TestPostToAnExistingGETRouteIs405(t *testing.T) {
+	app, _ := newApp(t)
+
+	rec := post(t, app, "/", nil)
+	wantStatus(t, rec, http.StatusMethodNotAllowed)
+	if got, want := rec.Header().Get("Allow"), "GET, HEAD"; got != want {
+		t.Errorf("Allow = %q, want %q", got, want)
+	}
+}
+
 func TestPostPageRendersParagraphs(t *testing.T) {
 	app, db := newApp(t)
 	id := seed(t, db, "Release notes", "First paragraph.\n\nSecond paragraph.", true)
