@@ -48,11 +48,17 @@ func RunSqlc(moduleRoot string) error {
 func checkSqlcTool(moduleRoot string) error {
 	cmd := exec.Command("go", "tool")
 	cmd.Dir = moduleRoot
-	out, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("go tool: %w", err)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("go tool: %s", msg)
 	}
-	for _, line := range strings.Split(string(out), "\n") {
+	for _, line := range strings.Split(stdout.String(), "\n") {
 		if strings.TrimSpace(line) == sqlcToolPath {
 			return nil
 		}
