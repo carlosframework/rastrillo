@@ -14,6 +14,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -60,6 +61,23 @@ type Options struct {
 	Socket string
 	Addr   string
 
+	// Locales declares the app's locale codes (design doc §10) — the
+	// catalogs LocaleFS carries as locales/<code>.toml. Empty means a
+	// monolingual app: no locale middleware is installed and requests
+	// pay nothing.
+	Locales []string
+
+	// DefaultLocale is the locale for unprefixed requests that match
+	// nothing else, and the first fallback layer for missing keys.
+	// Empty defaults to Locales[0].
+	DefaultLocale string
+
+	// LocaleFS provides the locales/<code>.toml catalog files —
+	// normally an embed.FS rooted at the app directory. Nil is legal:
+	// lookups fall back to the key itself, which keeps a missing
+	// catalog visible instead of silently blank (§10).
+	LocaleFS fs.FS
+
 	// Logger defaults to slog.Default() if nil.
 	Logger *slog.Logger
 }
@@ -87,14 +105,13 @@ func Serve(opts Options) error {
 		defer db.Close()
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, "ok")
-	})
-	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, BuildVersion)
-	})
-	mux.Handle("/", opts.Mux)
+	handler, err := buildHandler(opts)
+	if err != nil {
+		// buildHandler's only error source is NewLocales, whose errors
+		// already carry the "rastrillo:" prefix — wrapping again here
+		// would read "rastrillo: rastrillo: ...".
+		return err
+	}
 
 	ln, err := listen(opts.Socket, opts.Addr)
 	if err != nil {
@@ -102,7 +119,7 @@ func Serve(opts Options) error {
 	}
 	logger.Info("rastrillo: serving", "addr", ln.Addr().String(), "version", BuildVersion)
 
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: handler}
 	errCh := make(chan error, 1)
 	go func() { errCh <- srv.Serve(ln) }()
 
@@ -122,6 +139,36 @@ func Serve(opts Options) error {
 		}
 	}
 	return nil
+}
+
+// buildHandler assembles the serving handler: the framework's own
+// endpoints, the app mux, and — when Options.Locales is set — the
+// locale middleware wrapped around the whole thing, so a locale
+// prefix strips before routing and the translator rides the request
+// context (§10). Split from Serve so the assembly is testable
+// without sockets.
+func buildHandler(opts Options) (http.Handler, error) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, "ok")
+	})
+	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, BuildVersion)
+	})
+	mux.Handle("/", opts.Mux)
+
+	if len(opts.Locales) == 0 {
+		return mux, nil
+	}
+	def := opts.DefaultLocale
+	if def == "" {
+		def = opts.Locales[0]
+	}
+	loc, err := NewLocales(opts.Locales, def, nil, opts.LocaleFS)
+	if err != nil {
+		return nil, err
+	}
+	return loc.Middleware(mux), nil
 }
 
 // listen resolves the platform's activation contract, exactly matching

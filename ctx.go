@@ -20,8 +20,13 @@ type Ctx struct {
 	Logger *slog.Logger
 
 	// Locale is the resolved locale for this request (design doc §10).
-	// Empty until the localization system lands; defaults are the app's
-	// problem for now.
+	// The v1 request-scoped surface for localization is
+	// rastrillo.LocaleFrom(r) / rastrillo.T(r, ...) / rastrillo.Tf(r,
+	// ...), which every action already has via r; this field stays
+	// empty because the generated router's default ctxFactory doesn't
+	// look at the request at all. An app can populate it by supplying
+	// its own per-request Ctx factory (the seam the generated router
+	// leaves open) that sets Locale from rastrillo.LocaleFrom(r).
 	Locale string
 
 	// Actor records who is calling this action (design doc §8).

@@ -1,21 +1,38 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/carlosframework/rastrillo/internal/generate"
 )
 
-// runGenerate implements `rastrillo generate [dir]`: the one-shot
-// generator rastrillo dev's watch loop and CI both call underneath
-// (design doc §11) — not yet wired to a watcher tonight, but this is
-// the single code path either would drive.
+// runGenerate implements `rastrillo generate [flags] [dir]`: the
+// one-shot generator rastrillo dev's watch loop and CI both call
+// underneath (design doc §11) — one code path, not two.
+//
+// --check is the framework's half of `carlos vet` (§11): verify and
+// report, write nothing. It covers route collisions (§4) and i18n
+// catalog completeness (§10) today; the rest of §11's list arrives with
+// the subsystems it checks.
+//
+// Flags come before the directory: FlagSet.Parse stops at the first
+// non-flag argument, which is what keeps the older bare `rastrillo
+// generate <dir>` form working unchanged.
 func runGenerate(args []string) error {
+	fset := flag.NewFlagSet("generate", flag.ContinueOnError)
+	check := fset.Bool("check", false, "verify without writing (route collisions, i18n catalog completeness)")
+	defaultLocale := fset.String("default-locale", "en", "locale every other catalog is checked against (design doc §10)")
+	if err := fset.Parse(args); err != nil {
+		return err
+	}
+
 	dir := "."
-	if len(args) > 0 {
-		dir = args[0]
+	if rest := fset.Args(); len(rest) > 0 {
+		dir = rest[0]
 	}
 	dir, err := filepath.Abs(dir)
 	if err != nil {
@@ -45,6 +62,31 @@ func runGenerate(args []string) error {
 			}
 		}
 		return fmt.Errorf("%d route collision(s); build fails loudly on purpose (design doc §4)", len(collisions))
+	}
+
+	if *check {
+		missing, err := generate.MissingKeys(filepath.Join(dir, "locales"), *defaultLocale)
+		if err != nil {
+			return fmt.Errorf("i18n catalog check: %w", err)
+		}
+		if len(missing) > 0 {
+			codes := make([]string, 0, len(missing))
+			for code := range missing {
+				codes = append(codes, code)
+			}
+			sort.Strings(codes)
+			fmt.Fprintf(os.Stderr, "rastrillo generate: incomplete locale catalogs (default %q) —\n", *defaultLocale)
+			for _, code := range codes {
+				fmt.Fprintf(os.Stderr, "  locales/%s.toml is missing:\n", code)
+				for _, key := range missing[code] {
+					fmt.Fprintf(os.Stderr, "    %s\n", key)
+				}
+			}
+			return fmt.Errorf("%d locale catalog(s) incomplete; silent fallback while iterating, loud failure before ship (design doc §10)", len(missing))
+		}
+
+		fmt.Printf("rastrillo generate --check: %d route(s), locale catalogs complete\n", len(actions))
+		return nil
 	}
 
 	genDir := filepath.Join(dir, "gen")
