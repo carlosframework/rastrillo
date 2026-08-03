@@ -76,6 +76,7 @@ func TestBothThemesDeclareEveryColourToken(t *testing.T) {
 		"--rst-tone-positive-fg", "--rst-tone-positive-bg",
 		"--rst-tone-warning-fg", "--rst-tone-warning-bg",
 		"--rst-tone-negative-fg", "--rst-tone-negative-bg",
+		"--rst-shadow",
 	}
 	for _, prop := range themed {
 		// Declarations are "<prop>: value"; uses are "var(<prop>)", so the
@@ -657,5 +658,47 @@ func TestDisabledPaginationChipIsStyled(t *testing.T) {
 	}
 	if strings.Contains(css, `.rst-pagination [aria-disabled=`) {
 		t.Errorf("tokens.css still carries the dead aria-disabled pagination rule no partial emits")
+	}
+}
+
+func TestDropdownRendersADetailsMenuOfLinks(t *testing.T) {
+	got := render(t, "dropdown", map[string]any{
+		"Label": "All",
+		"Aria":  "Filter by status: All",
+		"Items": []any{
+			map[string]any{"Href": "/admin/posts", "Label": "All", "Current": true},
+			map[string]any{"Href": "/admin/posts?status=draft", "Label": "Drafts"},
+		},
+	})
+	for _, want := range []string{
+		`<details class="rst-dropdown">`,
+		`<summary class="rst-btn rst-dropdown__summary" aria-label="Filter by status: All">All`,
+		`<a href="/admin/posts" aria-current="true">All`,
+		`<a href="/admin/posts?status=draft">Drafts</a>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+	// The current item is marked twice — attribute and check icon; the
+	// non-current one carries neither.
+	if !strings.Contains(got, `path d="M20 6 9 17l-5-5"`) {
+		t.Errorf("current item lost its check icon: %s", got)
+	}
+	if strings.Count(got, "aria-current") != 1 {
+		t.Errorf("aria-current should mark exactly the current item: %s", got)
+	}
+}
+
+func TestDropdownMinimalFixture(t *testing.T) {
+	got := render(t, "dropdown", map[string]any{
+		"Label": "Sort",
+		"Items": []any{map[string]any{"Href": "/x", "Label": "Newest"}},
+	})
+	if strings.Contains(got, "aria-label") {
+		t.Errorf("Aria was absent but an aria-label rendered: %s", got)
+	}
+	if !strings.Contains(got, `path d="m6 9 6 6 6-6"`) {
+		t.Errorf("summary lost its disclosure chevron: %s", got)
 	}
 }

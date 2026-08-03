@@ -154,6 +154,8 @@
   --rst-tone-warning-bg: #f4e4c9;
   --rst-tone-negative-fg: #93262f;
   --rst-tone-negative-bg: #f9dcdd;
+
+  --rst-shadow: 0 8px 24px rgb(27 26 35 / 0.12);
 }
 
 /* ── Colour: dark, following the OS. ──────────────────────────────── */
@@ -184,6 +186,8 @@
     --rst-tone-warning-bg: #322512;
     --rst-tone-negative-fg: #f58c95;
     --rst-tone-negative-bg: #35191e;
+
+    --rst-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
   }
 }
 
@@ -216,6 +220,8 @@
   --rst-tone-warning-bg: #322512;
   --rst-tone-negative-fg: #f58c95;
   --rst-tone-negative-bg: #35191e;
+
+  --rst-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
 }
 
 /* ── Base. Three rules, so a freshly scaffolded app looks finished
@@ -312,6 +318,52 @@ body {
   background: var(--rst-accent-strong);
   border-color: var(--rst-accent-strong);
   color: var(--rst-on-accent);
+}
+
+/* ── dropdown ─────────────────────────────────────────────────────── */
+.rst-dropdown {
+  position: relative;
+}
+/* The summary reuses .rst-btn; only the default disclosure marker has
+   to go — the chevron icon is the affordance. */
+.rst-dropdown__summary {
+  list-style: none;
+}
+.rst-dropdown__summary::-webkit-details-marker {
+  display: none;
+}
+.rst-dropdown__menu {
+  background: var(--rst-surface);
+  border: 1px solid var(--rst-line);
+  border-radius: var(--rst-radius-sm);
+  box-shadow: var(--rst-shadow);
+  display: flex;
+  flex-direction: column;
+  inset-inline-start: 0;
+  margin-block-start: var(--rst-sp-1);
+  min-inline-size: 11rem;
+  padding: var(--rst-sp-1);
+  position: absolute;
+  z-index: 1;
+}
+.rst-dropdown__menu a {
+  align-items: center;
+  border-radius: var(--rst-radius-sm);
+  color: var(--rst-text);
+  display: flex;
+  font-size: var(--rst-fs-sm);
+  gap: var(--rst-sp-2);
+  justify-content: space-between;
+  padding: var(--rst-sp-2) var(--rst-sp-3);
+  text-decoration: none;
+}
+.rst-dropdown__menu a:hover {
+  background: var(--rst-surface-2);
+  color: var(--rst-accent);
+}
+.rst-dropdown__menu a[aria-current="true"] {
+  color: var(--rst-accent);
+  font-weight: 600;
 }
 
 /* ── page-header ──────────────────────────────────────────────────── */
