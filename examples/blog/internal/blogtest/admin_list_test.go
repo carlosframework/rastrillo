@@ -133,16 +133,8 @@ func TestAdminSecondPageShowsTheEleventhPost(t *testing.T) {
 
 func TestAdminListFiltersByStatus(t *testing.T) {
 	h, db := newApp(t)
-	if _, err := blog.Create(db, "Draft post", "b"); err != nil {
-		t.Fatal(err)
-	}
-	pubID, err := blog.Create(db, "Published post", "b")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := blog.SetPublished(db, pubID, true); err != nil {
-		t.Fatal(err)
-	}
+	seed(t, db, "Draft post", "b", false)
+	seed(t, db, "Published post", "b", true)
 
 	rec := get(t, h, "/admin/posts?status=draft")
 	body := rec.Body.String()
@@ -165,9 +157,7 @@ func TestAdminListFiltersByStatus(t *testing.T) {
 func TestAdminListFilterComposesWithSearchAndPaging(t *testing.T) {
 	h, db := newApp(t)
 	for i := 0; i < blog.PageSize+1; i++ {
-		if _, err := blog.Create(db, fmt.Sprintf("Note %02d", i), "b"); err != nil {
-			t.Fatal(err)
-		}
+		seed(t, db, fmt.Sprintf("Note %02d", i), "b", false)
 	}
 	rec := get(t, h, "/admin/posts?q=Note&status=draft")
 	body := rec.Body.String()
@@ -182,9 +172,8 @@ func TestAdminListFilterComposesWithSearchAndPaging(t *testing.T) {
 
 func TestAdminListFilterWithNoMatchesSaysSo(t *testing.T) {
 	h, db := newApp(t)
-	if _, err := blog.Create(db, "Only draft", "b"); err != nil {
-		t.Fatal(err)
-	}
+	seed(t, db, "Only draft", "b", false)
+
 	rec := get(t, h, "/admin/posts?status=published")
 	body := rec.Body.String()
 	if !strings.Contains(body, "No published posts yet.") {

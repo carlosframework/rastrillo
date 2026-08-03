@@ -205,7 +205,9 @@ func NormalizeStatus(raw string) string {
 
 // BuildStatusFilter builds the admin list's status dropdown. Hrefs
 // carry the current search and reset paging — changing a filter starts
-// at page 1 by construction.
+// at page 1 by construction. status must be a NormalizeStatus result
+// ("", "draft" or "published"): it is interpolated into the href
+// unescaped, which every current caller satisfies.
 func BuildStatusFilter(q, status string) Filter {
 	href := func(s string) string {
 		var params []string
@@ -348,7 +350,9 @@ func Paragraphs(body string) []string {
 
 // BuildPagination builds the page strip for a list of total items at a
 // 1-based page number. Show is false at or below one page, and the page
-// template guards the partial with it.
+// template guards the partial with it. status must be a NormalizeStatus
+// result ("", "draft" or "published"): it is interpolated into each
+// href unescaped, which every current caller satisfies.
 func BuildPagination(base, q, status string, page, total int) Pagination {
 	p := Pagination{Show: total > PageSize}
 	if !p.Show {

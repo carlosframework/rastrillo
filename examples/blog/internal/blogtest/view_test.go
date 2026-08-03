@@ -176,6 +176,18 @@ func TestPaginationCarriesTheStatusFilterAfterTheQuery(t *testing.T) {
 	}
 }
 
+// The admin list's integration tests only ever exercise a plain search
+// (q, no status) or a plain filter (status, no q); this test pins the
+// combined wording directly, plus the filter-only case's curly quotes.
+func TestNoMatchNotePinsTheCombinedQueryAndStatusWording(t *testing.T) {
+	if got, want := blog.NoMatchNote("x", "draft"), "No drafts match “x”."; got != want {
+		t.Errorf("NoMatchNote(%q, %q) = %q, want %q", "x", "draft", got, want)
+	}
+	if got, want := blog.NoMatchNote("", "published"), "No published posts yet."; got != want {
+		t.Errorf("NoMatchNote(%q, %q) = %q, want %q", "", "published", got, want)
+	}
+}
+
 // A gap needs 71 posts to appear, so the app builds it correctly and
 // never renders it — the library's own fixtures cover that item kind.
 func TestPaginationWindowsWithGapsPastSevenPages(t *testing.T) {
