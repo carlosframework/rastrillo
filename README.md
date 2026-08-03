@@ -69,8 +69,12 @@ rather than rushed — see `internal/generate/generate.go`'s package doc.
 ```
 go install github.com/carlosframework/rastrillo/cmd/rastrillo@latest
 rastrillo new myapp
-cd myapp && go mod tidy && go build ./cmd/myapp && ./myapp -addr :8080
+cd myapp && go mod tidy && rastrillo dev
 ```
+
+Then edit an action, save, refresh — `rastrillo dev` regenerates,
+rebuilds, and restarts for you. For a one-off build without the watch
+loop: `go build ./cmd/myapp && ./myapp -addr :8080`.
 
 Or via Homebrew: `brew install carlosframework/tap/rastrillo`.
 
