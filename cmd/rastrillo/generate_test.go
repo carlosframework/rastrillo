@@ -22,7 +22,11 @@ func scaffold(t *testing.T, files map[string]string) string {
 	return dir
 }
 
-const handleSrc = "package actions\n\nimport (\n\t\"net/http\"\n\n\t\"github.com/carlosframework/rastrillo\"\n)\n\nfunc Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {}\n"
+const handleSrc = "//go:build rastrillo_actions\n\npackage actions\n\nimport (\n\t\"net/http\"\n\n\t\"github.com/carlosframework/rastrillo\"\n)\n\nfunc Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {}\n"
+
+// untaggedHandleSrc is a pre-F9 action file: valid generator input that
+// `go build ./...` would try (and fail) to compile.
+const untaggedHandleSrc = "package actions\n\nimport (\n\t\"net/http\"\n\n\t\"github.com/carlosframework/rastrillo\"\n)\n\nfunc Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {}\n"
 
 func TestGenerateWritesTheRouter(t *testing.T) {
 	dir := scaffold(t, map[string]string{
@@ -106,6 +110,32 @@ func TestGenerateCheckHonoursTheDefaultLocaleFlag(t *testing.T) {
 	})
 	if err := runGenerate([]string{"--check", "--default-locale", "fr", dir}); err == nil {
 		t.Fatal("with fr as the default, en.toml is the incomplete one")
+	}
+}
+
+func TestGenerateWithoutCheckToleratesAnUntaggedAction(t *testing.T) {
+	// Same §10 split as catalogs: a missing build tag never blocks the
+	// dev loop — the loud failure is --check-only (friction log F9).
+	dir := scaffold(t, map[string]string{
+		"go.mod":               "module demo\n\ngo 1.22\n",
+		"actions/index.GET.go": untaggedHandleSrc,
+	})
+	if err := runGenerate([]string{dir}); err != nil {
+		t.Fatalf("plain generate must not fail on an untagged action: %v", err)
+	}
+}
+
+func TestGenerateCheckFailsOnAnUntaggedAction(t *testing.T) {
+	dir := scaffold(t, map[string]string{
+		"go.mod":               "module demo\n\ngo 1.22\n",
+		"actions/index.GET.go": untaggedHandleSrc,
+	})
+	err := runGenerate([]string{"--check", dir})
+	if err == nil {
+		t.Fatal("want a failure: the file lacks //go:build rastrillo_actions (F9)")
+	}
+	if !strings.Contains(err.Error(), "rastrillo_actions") {
+		t.Errorf("error should name the missing tag: %v", err)
 	}
 }
 

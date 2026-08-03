@@ -1,3 +1,8 @@
+// actions/ is generator input, never compiled in place: rastrillo
+// generate copies each file under gen/ (stripping this constraint).
+// The tag keeps `go build ./...` and friends off the originals.
+//go:build rastrillo_actions
+
 package actions
 
 import (

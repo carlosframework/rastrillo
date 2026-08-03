@@ -15,16 +15,17 @@ import (
 // underneath (design doc §11) — one code path, not two.
 //
 // --check is the framework's half of `carlos vet` (§11): verify and
-// report, write nothing. It covers route collisions (§4) and i18n
-// catalog completeness (§10) today; the rest of §11's list arrives with
-// the subsystems it checks.
+// report, write nothing. It covers route collisions (§4), the action
+// build-tag convention (friction log F9), and i18n catalog completeness
+// (§10) today; the rest of §11's list arrives with the subsystems it
+// checks.
 //
 // Flags come before the directory: FlagSet.Parse stops at the first
 // non-flag argument, which is what keeps the older bare `rastrillo
 // generate <dir>` form working unchanged.
 func runGenerate(args []string) error {
 	fset := flag.NewFlagSet("generate", flag.ContinueOnError)
-	check := fset.Bool("check", false, "verify without writing (route collisions, i18n catalog completeness)")
+	check := fset.Bool("check", false, "verify without writing (route collisions, action build tags, i18n catalog completeness)")
 	defaultLocale := fset.String("default-locale", "en", "locale every other catalog is checked against (design doc §10)")
 	if err := fset.Parse(args); err != nil {
 		return err
@@ -65,6 +66,27 @@ func runGenerate(args []string) error {
 	}
 
 	if *check {
+		// Untagged action files don't break the app — plain generate
+		// tolerates them, so iterating stays smooth — but they do break
+		// every `go build ./...` in the tree (friction log F9), and the
+		// raw go errors ("malformed import path", "Handle redeclared")
+		// never mention the one-line fix. Fail here, where the message
+		// can.
+		untagged, err := generate.UntaggedActions(actionsDir, actions)
+		if err != nil {
+			return fmt.Errorf("build-tag check: %w", err)
+		}
+		if len(untagged) > 0 {
+			fmt.Fprintln(os.Stderr, "rastrillo generate: action files missing the build constraint —")
+			for _, s := range untagged {
+				fmt.Fprintf(os.Stderr, "  actions/%s\n", s)
+			}
+			fmt.Fprintf(os.Stderr, "each needs `//go:build %s` (then a blank line) above its package clause,\n", generate.BuildTag)
+			fmt.Fprintln(os.Stderr, "so `go build ./...` and friends skip generator input instead of failing on it")
+			fmt.Fprintln(os.Stderr, "(a file that already carries a //go:build line needs it amended, never a second line)")
+			return fmt.Errorf("%d action file(s) missing //go:build %s", len(untagged), generate.BuildTag)
+		}
+
 		missing, err := generate.MissingKeys(filepath.Join(dir, "locales"), *defaultLocale)
 		if err != nil {
 			return fmt.Errorf("i18n catalog check: %w", err)
@@ -85,7 +107,7 @@ func runGenerate(args []string) error {
 			return fmt.Errorf("%d locale catalog(s) incomplete; silent fallback while iterating, loud failure before ship (design doc §10)", len(missing))
 		}
 
-		fmt.Printf("rastrillo generate --check: %d route(s), locale catalogs complete\n", len(actions))
+		fmt.Printf("rastrillo generate --check: %d route(s), actions tagged, locale catalogs complete\n", len(actions))
 		return nil
 	}
 

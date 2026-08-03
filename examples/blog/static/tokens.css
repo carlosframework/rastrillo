@@ -608,7 +608,7 @@ body {
   color: var(--rst-on-accent);
   font-weight: 600;
 }
-.rst-pagination [aria-disabled="true"] {
+.rst-pagination .rst-pagination__disabled {
   border-style: dashed;
   color: var(--rst-text-faint);
 }

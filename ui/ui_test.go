@@ -418,7 +418,7 @@ func TestPaginationRendersEveryItemKind(t *testing.T) {
 	})
 	for _, want := range []string{
 		`aria-label="Pagination"`,
-		`<span>Previous</span>`,
+		`<span class="rst-pagination__disabled">Previous</span>`,
 		`<span aria-current="page">1</span>`,
 		`<a href="/posts?page=2">2</a>`,
 		`aria-hidden="true"`,
@@ -640,4 +640,22 @@ func TestRenderEverythingSmoke(t *testing.T) {
 // "<tag " and "<tag>" so <p> is never confused with <path>.
 func countOpenTags(s, tag string) int {
 	return strings.Count(s, "<"+tag+" ") + strings.Count(s, "<"+tag+">")
+}
+
+// F10 regression (examples/blog friction log): the class the partial
+// emits for a disabled chip and the selector tokens.css styles must be
+// the same string — they drifted apart once, leaving a disabled
+// Previous visually identical to a live link.
+func TestDisabledPaginationChipIsStyled(t *testing.T) {
+	got := render(t, "pagination", fixtureFor(t, "pagination"))
+	if !strings.Contains(got, `class="rst-pagination__disabled"`) {
+		t.Errorf("disabled item lost its class: %s", got)
+	}
+	css := string(TokensCSS())
+	if !strings.Contains(css, ".rst-pagination__disabled") {
+		t.Errorf("tokens.css no longer styles .rst-pagination__disabled")
+	}
+	if strings.Contains(css, `.rst-pagination [aria-disabled=`) {
+		t.Errorf("tokens.css still carries the dead aria-disabled pagination rule no partial emits")
+	}
 }
