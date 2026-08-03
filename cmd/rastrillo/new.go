@@ -7,7 +7,7 @@ import (
 )
 
 // runNew implements `rastrillo new <name>`: go.mod, one starter action,
-// a main.go wiring Serve to the (not-yet-generated) router, then runs
+// a main.go wiring Run to the (not-yet-generated) router, then runs
 // generate once so `go build` works immediately (design doc §11).
 //
 // The starter is a plain hand-written action, not a Resource/TOML

@@ -12,7 +12,7 @@ This is a first pass, built overnight to prove the core loop end to end
 rather than to cover the full design. **Built:**
 
 - **`rastrillo new <name>`** — scaffolds a Go app: `go.mod`, one starter
-  action, a `main.go` wiring `rastrillo.Serve`. Runs generate once so
+  action, a `main.go` wiring `rastrillo.Run`. Runs generate once so
   `go build` works immediately.
 - **`rastrillo generate [dir]`** — the filesystem-routing generator
   (design doc §4): walks `actions/`, emits `gen/router.go` on a Go 1.22
