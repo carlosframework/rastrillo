@@ -65,26 +65,35 @@ func TestRunSqlcMissingToolSaysHowToAddIt(t *testing.T) {
 // TestRunSqlcGeneratesCompilingStore is the slice's heaviest
 // integration test: it fetches the real sqlc binary over the network
 // (via the module's own tool directive), runs the store emitter's
-// output for TWO resource shapes through it, emits Task 8's actions
+// output for THREE resource shapes through it, emits Task 8's actions
 // against the same real sqlc output, and builds the whole module. If
 // the fetch fails for network reasons, this test skips rather than
 // fails — Task 10 (blog adoption) exercises the identical path in CI,
 // so a skip here is not silent coverage loss.
 //
-// Two fixtures, not one, on purpose: fixtureResource ("notes") has
+// Three fixtures, not two, on purpose. fixtureResource ("notes") has
 // both List.Search and a List.Filter, so its Count/List queries always
-// have at least one bind parameter and sqlc always generates a
-// Params struct for them. noAdvancedFixtureResource ("widgets") has
-// neither — its Count query has ZERO bind parameters, and sqlc's own
-// convention (discovered the hard way during Task 8's self-review,
-// see task-8-report.md) is to drop the Params argument from the
-// generated method entirely rather than emit an empty struct type.
-// EmitActions' index.GET builder has to match that exactly or the
-// generated action fails to compile against the real store — a
-// mismatch a hand-written stub can hide (it did, briefly) but this
-// real-sqlc round trip cannot: if a future sqlc version changes this
-// convention, this test — not just TestEmitActionsCompile's stub —
-// will fail loudly.
+// have TWO OR MORE bind parameters and sqlc always generates a Params
+// struct for them. noAdvancedFixtureResource ("widgets") has neither —
+// its Count query has ZERO bind parameters, and sqlc's own convention
+// (discovered the hard way during Task 8's self-review, see
+// task-8-report.md) is to drop the Params argument from the generated
+// method entirely rather than emit an empty struct type.
+// searchOnlyFixtureResource ("articles") is the third, previously
+// missing corner: List.Search but no List.Filter, so its Count query
+// has EXACTLY ONE bind parameter — sqlc's convention there (verified
+// against this very real `sqlc generate` run, and matching the blog's
+// own committed gen/store/posts/queries.sql.go, which has this same
+// one-bind shape) is to pass that one parameter bare, neither wrapped
+// in a Params struct (notes' shape) nor omitted (widgets' shape).
+// EmitActions' index.GET builder used to emit the Params-struct call
+// for this shape too (Critical 1: the earlier `countHasParams :=
+// searchParam || len(fvars) > 0` gate only distinguished zero from "at
+// least one", never "exactly one" from "two or more"), which fails to
+// compile against real sqlc output — a mismatch a hand-written stub
+// can hide but this real-sqlc round trip cannot: if a future sqlc
+// version changes this convention, this test — not just
+// TestEmitActionsCompile's stubs — will fail loudly.
 func TestRunSqlcGeneratesCompilingStore(t *testing.T) {
 	root := newScratchModule(t, true)
 
@@ -97,7 +106,8 @@ func TestRunSqlcGeneratesCompilingStore(t *testing.T) {
 	genDir := filepath.Join(root, "gen")
 	notes := fixtureResource()
 	widgets := noAdvancedFixtureResource()
-	if _, err := EmitStore(genDir, []rastrillo.Resource{notes, widgets}); err != nil {
+	articles := searchOnlyFixtureResource()
+	if _, err := EmitStore(genDir, []rastrillo.Resource{notes, widgets, articles}); err != nil {
 		t.Fatalf("EmitStore: %v", err)
 	}
 
@@ -110,6 +120,9 @@ func TestRunSqlcGeneratesCompilingStore(t *testing.T) {
 	}
 	if _, _, err := EmitActions(root, genDir, widgets); err != nil {
 		t.Fatalf("EmitActions(widgets): %v", err)
+	}
+	if _, _, err := EmitActions(root, genDir, articles); err != nil {
+		t.Fatalf("EmitActions(articles): %v", err)
 	}
 
 	// The point of this test over EmitStore/EmitActions' own golden

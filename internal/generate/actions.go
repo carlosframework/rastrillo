@@ -241,26 +241,35 @@ func mainSubColumns(r rastrillo.Resource) (main column, sub column, hasSub bool)
 
 // fieldExpr renders the Go expression that reads c's current value off
 // a record variable named varName: a Money column reads through
-// formatCents (every template-facing value is a display string,
-// never math the template does itself — the same discipline
-// templates.go documents for show.html/form.html), everything else is
-// the raw sqlc-generated field.
-func fieldExpr(varName string, c column) string {
+// moneyFmt — either "formatCents" for a display-only context
+// (show.html's Fields/Title, index.GET's Rows) that wants the "$1.23"
+// string a human reads, or "formatCentsPlain" for a context that seeds
+// a form field a browser might resubmit completely unchanged
+// (edit.GET's Fields, and the OTHER field group's current values on a
+// validation-failure re-render) — that seed must come back out exactly
+// as parseCents itself accepts back in ("1.23", never "$1.23"; see
+// parseCents' own doc for why a leading "$" 400s an untouched edit).
+// Everything else (Text/Textarea) is the raw sqlc-generated field,
+// unaffected by either formatter.
+func fieldExpr(varName string, c column, moneyFmt string) string {
 	if c.Kind == rastrillo.Money {
-		return fmt.Sprintf("formatCents(%s.%s)", varName, c.Name)
+		return fmt.Sprintf("%s(%s.%s)", moneyFmt, varName, c.Name)
 	}
 	return varName + "." + c.Name
 }
 
 // fieldsMapLiteral renders a `map[string]string{...}` literal for
 // every column in columns(r), each keyed by its declared name and
-// valued by fieldExpr(varName, c) — the shape show.html and the Edit
-// half of form.html both read as Fields.
-func fieldsMapLiteral(r rastrillo.Resource, varName string) string {
+// valued by fieldExpr(varName, c, moneyFmt) — the shape show.html and
+// the Edit half of form.html both read as Fields. Callers pass
+// "formatCents" (show's Fields, a display context) or
+// "formatCentsPlain" (edit's Fields, a re-submittable form seed) — see
+// fieldExpr's doc for why the two contexts need different formatters.
+func fieldsMapLiteral(r rastrillo.Resource, varName, moneyFmt string) string {
 	var b strings.Builder
 	b.WriteString("map[string]string{\n")
 	for _, c := range columns(r) {
-		fmt.Fprintf(&b, "%q: %s,\n", c.Name, fieldExpr(varName, c))
+		fmt.Fprintf(&b, "%q: %s,\n", c.Name, fieldExpr(varName, c, moneyFmt))
 	}
 	b.WriteString("}")
 	return b.String()
@@ -280,8 +289,19 @@ func zeroFieldsMapLiteral(r rastrillo.Resource) string {
 
 // filterVar is one List.Filter entry's generated shape: a query-string
 // key (its sqlName) and a local variable name ("filter" + the declared
-// name — reconstructing the declared name exactly, since sqlName then
-// pascalCase round-trips any identPattern-valid identifier).
+// name, used as-is — not reconstructed through sqlName/pascalCase).
+// Param — "Filter"+Field — has to spell exactly what sqlc names the
+// CountXParams/ListXParams struct field for this filter, and sqlc
+// derives that name as pascalCase(sqlName(f)), NOT f itself. Those two
+// only agree for every identPattern-valid f because
+// rastrillo.Resource.Validate additionally rejects any field/column
+// name where pascalCase(sqlName(name)) != name (see manifest.go) —
+// without that guarantee a name like "title" or "IPAddress" would
+// still pass identPattern but generate a Param field the real sqlc
+// struct doesn't have. This comment used to claim sqlName+pascalCase
+// "round-trips any identPattern-valid identifier", which is false on
+// its own (see manifest.go's isCanonicalIdent doc) and only became true
+// once Validate started enforcing it.
 type filterVar struct {
 	Field string // declared name, e.g. "Title"
 	Query string // sqlName(Field), the URL query key, e.g. "title"
@@ -305,13 +325,14 @@ func filterVars(r rastrillo.Resource) []filterVar {
 // ── Shared boilerplate, identical across all seven files for a given
 // resource (only the "<name>: " log prefix varies) ─────────────────
 
-// helperFuncs renders the fail/render/parseID/formatCents/parseCents
-// helpers every generated action carries. Including all five
-// unconditionally in every file (rather than computing per-file which
-// are actually called) keeps the emitter's per-file logic simple and
-// costs nothing real: an unused top-level func is valid Go, and each
-// helper's own body is what pulls in "fmt"/"strconv"/"strings" — never
-// a needless import.
+// helperFuncs renders the
+// fail/render/parseID/formatCents/formatCentsPlain/parseCents helpers
+// every generated action carries. Including all six unconditionally in
+// every file (rather than computing per-file which are actually
+// called) keeps the emitter's per-file logic simple and costs nothing
+// real: an unused top-level func is valid Go, and each helper's own
+// body is what pulls in "fmt"/"strconv"/"strings" — never a needless
+// import.
 func helperFuncs(name string) string {
 	return fmt.Sprintf(`
 // fail logs through Ctx.Logger (when set) and answers a plain 500.
@@ -346,26 +367,60 @@ func parseID(r *http.Request) (int64, bool) {
 	return id, true
 }
 
-// formatCents renders cents as a dollar string — the only money
-// formatting a generated template ever sees; a template never does
-// money math itself.
+// formatCents renders cents as a dollar string for a DISPLAY context
+// (show.html's Fields/Title, index.GET's Rows) — the only money
+// formatting a generated template ever sees there; a template never
+// does money math itself. The sign, if any, is written once up front
+// against the absolute value: cents/100 and cents%%100 both truncate
+// toward zero in Go, so naively formatting a negative cents value
+// directly (an earlier draft did) mangles it into something like
+// "$-1.-50" instead of "-$1.50". parseCents below never actually
+// hands this function a negative value (v1 rejects negative money
+// outright), but a stored value could in principle be negative from
+// some other path, so the sign is still handled correctly here as
+// defense in depth.
 func formatCents(cents int64) string {
-	return fmt.Sprintf("$%%d.%%02d", cents/100, cents%%100)
+	sign := ""
+	if cents < 0 {
+		sign = "-"
+		cents = -cents
+	}
+	return fmt.Sprintf("%%s$%%d.%%02d", sign, cents/100, cents%%100)
+}
+
+// formatCentsPlain renders cents exactly like formatCents but without
+// the leading "$" — the formatter edit.GET (and the OTHER field
+// group's current values on a validation-failure re-render) must use
+// to seed a form field a browser might resubmit completely unchanged:
+// the seed has to be exactly what parseCents itself accepts back in,
+// and parseCents rejects a leading "$" (see its own doc). Using
+// formatCents there instead (an earlier draft did) meant resubmitting
+// an untouched Money field always 400ed.
+func formatCentsPlain(cents int64) string {
+	sign := ""
+	if cents < 0 {
+		sign = "-"
+		cents = -cents
+	}
+	return fmt.Sprintf("%%s%%d.%%02d", sign, cents/100, cents%%100)
 }
 
 // parseCents parses a decimal-dollars string (e.g. "12.34") into
 // cents, rejecting more than two decimal places. An empty string
 // parses to zero cents, not an error — v1 has no server-side
-// required-field validation.
+// required-field validation. v1 also has no use for negative prices,
+// so any sign character is rejected outright as a field error rather
+// than accepted and applied: the whole and fractional parts must each
+// be composed entirely of ASCII digits. This is stricter than handing
+// each half to strconv.ParseInt directly (an earlier draft did),
+// which happily accepts its own leading "+"/"-" in either half — so
+// "12.-5" or "12.+5" would silently mis-parse into a different
+// magnitude than the digits alone suggest, rather than being rejected
+// as the not-a-dollar-amount that it is.
 func parseCents(s string) (int64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0, nil
-	}
-	neg := false
-	if strings.HasPrefix(s, "-") {
-		neg = true
-		s = s[1:]
 	}
 	whole, frac, hasFrac := strings.Cut(s, ".")
 	if hasFrac && len(frac) > 2 {
@@ -377,6 +432,9 @@ func parseCents(s string) (int64, error) {
 	if whole == "" {
 		whole = "0"
 	}
+	if !isDigits(whole) || !isDigits(frac) {
+		return 0, fmt.Errorf("enter a valid dollar amount")
+	}
 	wholeN, err := strconv.ParseInt(whole, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("enter a valid dollar amount")
@@ -385,11 +443,22 @@ func parseCents(s string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("enter a valid dollar amount")
 	}
-	cents := wholeN*100 + fracN
-	if neg {
-		cents = -cents
+	return wholeN*100 + fracN, nil
+}
+
+// isDigits reports whether s is non-empty and every byte is an ASCII
+// digit — parseCents' guard against a sign character ("-"/"+")
+// slipping through either half via strconv.ParseInt's own leniency.
+func isDigits(s string) bool {
+	if s == "" {
+		return false
 	}
-	return cents, nil
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 `, name+": ", name+": ")
 }
@@ -493,15 +562,41 @@ offset := (page - 1) * pageSize
 	plural := pascalCase(r.Name)
 
 	// CountX has no tail clause the way ListX's LIMIT/OFFSET always
-	// gives it one — a resource with neither a search box nor a
-	// declared Filter has a Count query with zero bind parameters, and
-	// sqlc's own convention (verified against a real `sqlc generate`
-	// run) is to drop the Params argument entirely in that case, not
-	// generate an empty struct type. Match that exactly, or the
-	// generated call would pass an argument the real method doesn't
-	// accept.
-	countHasParams := searchParam || len(fvars) > 0
-	if countHasParams {
+	// gives it one (ListX always binds at least page_limit/page_offset,
+	// so it always gets a real Params struct — sqlc's sqlite codegen
+	// only elides the struct at zero OR exactly one bind parameter,
+	// and List never has fewer than two). CountX has no such floor: its
+	// bind-parameter count is exactly len(fvars) plus one more if
+	// searchParam, and sqlc's own convention (verified against a real
+	// `sqlc generate` run — see the blog's committed
+	// gen/store/posts/queries.sql.go, a search-only resource, whose
+	// CountPosts takes a bare `search interface{}`, no CountPostsParams)
+	// is:
+	//   - zero bind params  -> no argument at all, not an empty struct
+	//   - exactly one       -> that one value passed bare, not wrapped
+	//     in a one-field struct
+	//   - two or more       -> the Params struct, as below
+	// Emitting the Params struct whenever searchParam || len(fvars) > 0
+	// (as an earlier draft did) is wrong for the one-param case and
+	// fails to compile against real sqlc output — a resource with only
+	// Search, or only a single Filter, has no way to also declare a
+	// second Filter that would push it into the struct case.
+	countBinds := len(fvars)
+	if searchParam {
+		countBinds++
+	}
+	switch {
+	case countBinds == 0:
+		b.WriteString("total, err := store.Count" + plural + "(r.Context())\n")
+	case countBinds == 1:
+		var arg string
+		if searchParam {
+			arg = searchExpr
+		} else {
+			arg = fvars[0].Var
+		}
+		b.WriteString("total, err := store.Count" + plural + "(r.Context(), " + arg + ")\n")
+	default:
 		b.WriteString("total, err := store.Count" + plural + "(r.Context(), " + alias + ".Count" + plural + "Params{\n")
 		if searchParam {
 			b.WriteString("Search: " + searchExpr + ",\n")
@@ -510,8 +605,6 @@ offset := (page - 1) * pageSize
 			fmt.Fprintf(&b, "%s: %s,\n", fv.Param, fv.Var)
 		}
 		b.WriteString("})\n")
-	} else {
-		b.WriteString("total, err := store.Count" + plural + "(r.Context())\n")
 	}
 	fmt.Fprintf(&b, "if err != nil {\n\tfail(ctx, w, %q, err)\n\treturn\n}\n", "counting "+r.Name)
 
@@ -535,7 +628,7 @@ for _, n := range rows {
 		Sub:  %s,
 	})
 }
-`, r.Route+"/%d", fieldExpr("n", main), subExpr(sub, hasSub))
+`, r.Route+"/%d", fieldExpr("n", main, "formatCents"), subExpr(sub, hasSub))
 
 	b.WriteString(`
 totalPages := (int(total) + pageSize - 1) / pageSize
@@ -600,7 +693,7 @@ func subExpr(sub column, hasSub bool) string {
 	if !hasSub {
 		return `""`
 	}
-	return fieldExpr("n", sub)
+	return fieldExpr("n", sub, "formatCents")
 }
 
 // searchExprForHref is the argument href() is called with at each of
@@ -779,7 +872,7 @@ render(ctx, w, %q, http.StatusOK, showView{
 	Fields:   %s,
 })
 }
-`, r.Name+"/show", fieldExpr("n", main), r.Route+"/%d/edit", fieldsMapLiteral(r, "n"))
+`, r.Name+"/show", fieldExpr("n", main, "formatCents"), r.Route+"/%d/edit", fieldsMapLiteral(r, "n", "formatCents"))
 
 	b.WriteString(showViewType)
 	b.WriteString(helperFuncs(r.Name))
@@ -827,7 +920,7 @@ render(ctx, w, %q, http.StatusOK, formView{
 	IsNew:  false,
 	Fields: %s,
 	BasicsAction: fmt.Sprintf(%q, id),
-`, r.Name+"/form", fieldsMapLiteral(r, "n"), r.Route+"/%d/edit-basics")
+`, r.Name+"/form", fieldsMapLiteral(r, "n", "formatCentsPlain"), r.Route+"/%d/edit-basics")
 	if hasAdvanced {
 		fmt.Fprintf(&b, "AdvancedAction: fmt.Sprintf(%q, id),\n", r.Route+"/%d/edit-advanced")
 	}
@@ -920,7 +1013,7 @@ func updatePOST(r rastrillo.Resource, module string, group []rastrillo.Field, gr
 			b.WriteString(ec)
 		}
 		b.WriteString("\nif len(errs) > 0 {\n")
-		b.WriteString("fields := " + fieldsMapLiteral(r, "n") + "\n")
+		b.WriteString("fields := " + fieldsMapLiteral(r, "n", "formatCentsPlain") + "\n")
 		for _, f := range group {
 			fmt.Fprintf(&b, "fields[%q] = %s\n", f.Name, byName[f.Name].RawExpr)
 		}

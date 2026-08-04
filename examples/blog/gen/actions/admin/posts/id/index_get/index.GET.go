@@ -80,26 +80,60 @@ func parseID(r *http.Request) (int64, bool) {
 	return id, true
 }
 
-// formatCents renders cents as a dollar string — the only money
-// formatting a generated template ever sees; a template never does
-// money math itself.
+// formatCents renders cents as a dollar string for a DISPLAY context
+// (show.html's Fields/Title, index.GET's Rows) — the only money
+// formatting a generated template ever sees there; a template never
+// does money math itself. The sign, if any, is written once up front
+// against the absolute value: cents/100 and cents%100 both truncate
+// toward zero in Go, so naively formatting a negative cents value
+// directly (an earlier draft did) mangles it into something like
+// "$-1.-50" instead of "-$1.50". parseCents below never actually
+// hands this function a negative value (v1 rejects negative money
+// outright), but a stored value could in principle be negative from
+// some other path, so the sign is still handled correctly here as
+// defense in depth.
 func formatCents(cents int64) string {
-	return fmt.Sprintf("$%d.%02d", cents/100, cents%100)
+	sign := ""
+	if cents < 0 {
+		sign = "-"
+		cents = -cents
+	}
+	return fmt.Sprintf("%s$%d.%02d", sign, cents/100, cents%100)
+}
+
+// formatCentsPlain renders cents exactly like formatCents but without
+// the leading "$" — the formatter edit.GET (and the OTHER field
+// group's current values on a validation-failure re-render) must use
+// to seed a form field a browser might resubmit completely unchanged:
+// the seed has to be exactly what parseCents itself accepts back in,
+// and parseCents rejects a leading "$" (see its own doc). Using
+// formatCents there instead (an earlier draft did) meant resubmitting
+// an untouched Money field always 400ed.
+func formatCentsPlain(cents int64) string {
+	sign := ""
+	if cents < 0 {
+		sign = "-"
+		cents = -cents
+	}
+	return fmt.Sprintf("%s%d.%02d", sign, cents/100, cents%100)
 }
 
 // parseCents parses a decimal-dollars string (e.g. "12.34") into
 // cents, rejecting more than two decimal places. An empty string
 // parses to zero cents, not an error — v1 has no server-side
-// required-field validation.
+// required-field validation. v1 also has no use for negative prices,
+// so any sign character is rejected outright as a field error rather
+// than accepted and applied: the whole and fractional parts must each
+// be composed entirely of ASCII digits. This is stricter than handing
+// each half to strconv.ParseInt directly (an earlier draft did),
+// which happily accepts its own leading "+"/"-" in either half — so
+// "12.-5" or "12.+5" would silently mis-parse into a different
+// magnitude than the digits alone suggest, rather than being rejected
+// as the not-a-dollar-amount that it is.
 func parseCents(s string) (int64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return 0, nil
-	}
-	neg := false
-	if strings.HasPrefix(s, "-") {
-		neg = true
-		s = s[1:]
 	}
 	whole, frac, hasFrac := strings.Cut(s, ".")
 	if hasFrac && len(frac) > 2 {
@@ -111,6 +145,9 @@ func parseCents(s string) (int64, error) {
 	if whole == "" {
 		whole = "0"
 	}
+	if !isDigits(whole) || !isDigits(frac) {
+		return 0, fmt.Errorf("enter a valid dollar amount")
+	}
 	wholeN, err := strconv.ParseInt(whole, 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("enter a valid dollar amount")
@@ -119,9 +156,20 @@ func parseCents(s string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("enter a valid dollar amount")
 	}
-	cents := wholeN*100 + fracN
-	if neg {
-		cents = -cents
+	return wholeN*100 + fracN, nil
+}
+
+// isDigits reports whether s is non-empty and every byte is an ASCII
+// digit — parseCents' guard against a sign character ("-"/"+")
+// slipping through either half via strconv.ParseInt's own leniency.
+func isDigits(s string) bool {
+	if s == "" {
+		return false
 	}
-	return cents, nil
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
