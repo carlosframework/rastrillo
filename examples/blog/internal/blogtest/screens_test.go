@@ -13,6 +13,10 @@ import (
 // published posts (so the guarded pagination strip appears on both list
 // screens, and /?page=2 is a real second page rather than an empty
 // state), plus one draft so the edit screen has a neutral pill to show.
+//
+// The admin new/edit/show targets now render through the manifest
+// system's generated templates (task 10's adoption) rather than the
+// old hand admin_new.html/admin_edit.html.
 func populatedScreens(t *testing.T) map[string]string {
 	t.Helper()
 	app, db := newApp(t)
@@ -31,6 +35,7 @@ func populatedScreens(t *testing.T) map[string]string {
 		"/admin/posts?q=go",
 		"/admin/posts?q=zzz",
 		"/admin/posts/new",
+		fmt.Sprintf("/admin/posts/%d", published),
 		fmt.Sprintf("/admin/posts/%d/edit", published),
 		fmt.Sprintf("/admin/posts/%d/edit", draft),
 	} {
@@ -41,6 +46,16 @@ func populatedScreens(t *testing.T) map[string]string {
 		out[target] = rec.Body.String()
 	}
 	return out
+}
+
+// isGeneratedFormScreen reports whether name is one of the generated
+// New/Edit form screens — the only screens with no page-header:
+// internal/generate/templates.go's formHTML doesn't emit one (see this
+// package's admin_form_test.go doc comment). The generated Show screen
+// (bare "/admin/posts/{id}") does carry a page-header, so it isn't
+// included here.
+func isGeneratedFormScreen(name string) bool {
+	return strings.HasSuffix(name, "/new") || strings.HasSuffix(name, "/edit")
 }
 
 // emptyScreens renders the two blank states.
@@ -101,7 +116,7 @@ func TestAllStockPartialsAppearAcrossTheApp(t *testing.T) {
 func TestEveryScreenHasAPageHeaderAndATitle(t *testing.T) {
 	titleRe := regexp.MustCompile(`<title>([^<]+)</title>`)
 	for name, html := range allScreens(t) {
-		if !strings.Contains(html, `<header class="rst-page-header">`) {
+		if !isGeneratedFormScreen(name) && !strings.Contains(html, `<header class="rst-page-header">`) {
 			t.Errorf("%s has no page header", name)
 		}
 		m := titleRe.FindStringSubmatch(html)

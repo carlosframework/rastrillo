@@ -14,20 +14,26 @@ import (
 	"time"
 
 	"github.com/carlosframework/rastrillo"
+
+	postsstore "blog/gen/store/posts"
 )
 
-// Migration is the app's whole schema: one additive, idempotent
-// statement. main.go hands it to rastrillo via Options.Migrations; Open
-// applies it for tests.
-const Migration = `
-CREATE TABLE IF NOT EXISTS posts (
-  id         INTEGER PRIMARY KEY,
-  title      TEXT    NOT NULL,
-  body       TEXT    NOT NULL,
-  published  INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT    NOT NULL,
-  updated_at TEXT    NOT NULL
-);`
+// Migrations is the app's whole schema, generated store first: the
+// manifest system's own posts.toml (manifest/posts.toml) now owns the
+// table's shape — postsstore.Migrations creates it (id, title, body,
+// created_at, updated_at) — and this package owns exactly one additive
+// column beyond that: published, which no manifest field declares.
+// Order matters (design doc's additive-migration convention): the
+// generated CREATE TABLE IF NOT EXISTS must run before this ALTER, so a
+// fresh database gets the table before anything tries to add a column
+// to it. main.go hands the whole slice to rastrillo via
+// Options.Migrations; Open applies it for tests. Re-running the ALTER
+// against a database that already has the column is safe —
+// rastrillo.OpenDB swallows sqlite's "duplicate column" error for
+// exactly this additive-ALTER convention.
+var Migrations = append(append([]string(nil), postsstore.Migrations...), publishedColumn)
+
+const publishedColumn = `ALTER TABLE posts ADD COLUMN published INTEGER NOT NULL DEFAULT 0;`
 
 // Post is one row of posts. Timestamps are stored as RFC3339 strings in
 // UTC and parsed on scan, so formatting happens once, in Go, and no
@@ -46,7 +52,7 @@ type Post struct {
 // main.go lets Serve open the database and hand the *sql.DB back via
 // Options.Router — but the tests still want a one-call migrated handle.
 func Open(path string) (*sql.DB, error) {
-	return rastrillo.OpenDB(path, []string{Migration})
+	return rastrillo.OpenDB(path, Migrations)
 }
 
 const selectColumns = `id, title, body, published, created_at, updated_at`
@@ -137,25 +143,6 @@ func Count(db *sql.DB, q, status string) (int, error) {
 	var n int
 	err := db.QueryRow(`SELECT COUNT(*) FROM posts`+where, args...).Scan(&n)
 	return n, err
-}
-
-// Create inserts a draft and returns its id.
-func Create(db *sql.DB, title, body string) (int64, error) {
-	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := db.Exec(`INSERT INTO posts (title, body, published, created_at, updated_at)
-		VALUES (?, ?, 0, ?, ?)`, title, body, now, now)
-	if err != nil {
-		return 0, err
-	}
-	return res.LastInsertId()
-}
-
-// Update rewrites a post's title and body and moves updated_at.
-func Update(db *sql.DB, id int64, title, body string) error {
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := db.Exec(`UPDATE posts SET title = ?, body = ?, updated_at = ? WHERE id = ?`,
-		title, body, now, id)
-	return err
 }
 
 // SetPublished flips a post's published flag and moves updated_at.

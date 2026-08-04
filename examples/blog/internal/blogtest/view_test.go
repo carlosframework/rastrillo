@@ -23,21 +23,33 @@ func renderPage(t *testing.T, page string, data any) string {
 // Parsed into one shared tree they would overwrite each other silently,
 // last file wins, and the app would render the wrong screen with no
 // error anywhere. This is the test that catches a lost clone.
+//
+// "posts/form" stands in for the old "admin_new" page here: the
+// manifest adoption (task 10) replaced the hand admin_new.html/
+// admin_edit.html pages (and their New/Edit actions) with the
+// generated form — see genrender.go's genPages tree, keyed by
+// "<resource>/<page>" rather than a bare basename. Any struct shaped
+// like the generated formView renders it: html/template resolves
+// fields by name via reflection, so this local, unexported literal
+// works exactly like the real (also unexported, and per-action-file)
+// formView the generated actions actually pass.
 func TestEachPageRendersItsOwnContent(t *testing.T) {
 	index := renderPage(t, "index", blog.HomeView{Head: blog.Head{Title: "The blog"}})
 	post := renderPage(t, "post", blog.PostView{
 		Head: blog.Head{Title: "Release notes"}, Title: "Release notes",
 		Date: "Published 2 August 2026", Paragraphs: []string{"One."},
 	})
-	adminNew := renderPage(t, "admin_new", blog.AdminFormView{
-		Head: blog.Head{Title: "New post"}, Action: "/admin/posts",
-	})
+	form := renderPage(t, "posts/form", struct {
+		IsNew  bool
+		Fields map[string]string
+		Errors map[string]string
+	}{IsNew: true, Fields: map[string]string{"Title": "", "Body": ""}})
 
 	wantContains(t, index, "Notes, in the order they were written.")
 	wantContains(t, post, `<article class="blog-article">`)
 	wantNotContains(t, post, "Notes, in the order they were written.")
-	wantContains(t, adminNew, `<form class="rst-form" method="post" action="/admin/posts">`)
-	wantNotContains(t, adminNew, `<article class="blog-article">`)
+	wantContains(t, form, `<form class="rst-form" method="post" action="/admin/posts">`)
+	wantNotContains(t, form, `<article class="blog-article">`)
 }
 
 func TestLayoutWrapsEveryPage(t *testing.T) {

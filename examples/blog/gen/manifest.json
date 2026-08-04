@@ -1,0 +1,30 @@
+[
+  {
+    "name": "posts",
+    "route": "/admin/posts",
+    "store": "exclusive",
+    "list": {
+      "columns": [
+        {
+          "field": "Title",
+          "kind": "text"
+        }
+      ],
+      "search": true,
+      "filter": null
+    },
+    "form": {
+      "basics": [
+        {
+          "name": "Title",
+          "kind": "text"
+        },
+        {
+          "name": "Body",
+          "kind": "textarea"
+        }
+      ],
+      "advanced": null
+    }
+  }
+]

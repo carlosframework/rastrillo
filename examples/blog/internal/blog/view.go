@@ -59,7 +59,19 @@ func buildPages() map[string]*template.Template {
 // Render executes one page's "layout" into a buffer and only then writes
 // the status and the bytes, so a template error is a clean 500 rather
 // than half a page followed by a stack trace.
+//
+// This is also the seam a generated action's ctx.Render call resolves
+// to (main.go wires it: &rastrillo.Ctx{Render: blog.Render}). A
+// generated page name is always "<resource>/<page>" (e.g.
+// "posts/form" — internal/generate's action emitter pins this),
+// distinct by construction from a hand page's bare basename key
+// ("admin_list", "index", ...), so the "/" is what tells the two
+// apart; genrender.go's renderGen handles the generated half.
 func Render(ctx *rastrillo.Ctx, w http.ResponseWriter, page string, status int, data any) {
+	if strings.Contains(page, "/") {
+		renderGen(ctx, w, page, status, data)
+		return
+	}
 	t, ok := pages[page]
 	if !ok {
 		Fail(ctx, w, "rendering "+page, fmt.Errorf("no such page template"))

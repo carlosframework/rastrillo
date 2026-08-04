@@ -1,9 +1,0 @@
-{{define "content"}}
-{{template "page-header" dict "Title" "New post" "Sub" "It starts as a draft — nothing is public until you publish it."}}
-{{if .Error}}<p class="blog-error" role="alert">{{.Error}}</p>{{end}}
-<form class="rst-form" method="post" action="{{.Action}}">
-{{template "field-text" dict "Name" "title" "Label" "Title" "Value" .FormTitle "Required" true}}
-{{template "field-textarea" dict "Name" "body" "Label" "Body" "Value" .Body "Rows" 18}}
-{{template "form-foot" dict "Submit" "Create post" "CancelHref" "/admin/posts" "CancelLabel" "Cancel"}}
-</form>
-{{end}}
