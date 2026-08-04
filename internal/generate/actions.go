@@ -806,9 +806,15 @@ func href(search string, carry [][2]string, page int) string {
 // first" ordering the blog's hand pattern (BuildStatusFilter) set. Every
 // Href goes through fv.Field's own filter<Field>Href, which — per the
 // brief's contract — carries the current search and this ONE filter
-// value, never page (changing a filter starts over at page 1) and never
-// any OTHER filter field's current value (Filters is capped at one
-// declared entry by Validate, so there is no second value to carry).
+// value, never page (changing a filter starts over at page 1). It also
+// never carries any OTHER filterVar's current query value — unlike
+// pagination's href, which loops the full carry slice. That only
+// matters for a bare List.Filter field (a raw WHERE-clause passthrough
+// with no [[list.filters]] entry and so no generated dropdown of its
+// own): its active query param is silently dropped by a click on this
+// dropdown. Narrow in practice — no shipped example combines a bare
+// List.Filter field with a declared List.Filters field on the same
+// resource — but real should that combination ever appear.
 // Every label is a T KEY (filter<Field>LabelKey), never a resolved
 // string — only list.html's template execution has a bound T (see the
 // package doc's "labels resolve at RENDER time" note).

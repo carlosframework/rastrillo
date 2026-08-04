@@ -208,9 +208,12 @@ without writing anything.
 
 **Filters** — at most one `[[list.filters]]` entry per resource. Field
 values are validated at generation time (must name a declared list
-column); value enumerations are user-declared, unconstrained. A filter
-persists across search and pagination: the same dropdown state stays
-open when the user refines a search or flips to the next page.
+column); each declared value must be non-empty, match `^[a-z0-9_-]+$`,
+and appear only once — they travel in URLs and double as translation
+keys, so they can't be arbitrary text. A filter's selection persists
+across search and pagination (carried in the generated hrefs); the
+dropdown's own open/closed `<details>` state does not survive
+navigation.
 
 **Required fields** — `required = true` on a form field marker adds a
 client-side `required` attribute via the field partial AND generates

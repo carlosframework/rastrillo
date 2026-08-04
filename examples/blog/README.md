@@ -146,16 +146,19 @@ is what makes reapplying that `ALTER` on every boot safe.
 **Why `Title` has `required = true` in the manifest, but no `required`
 attribute in the ejected form.** The manifest declares `required = true`,
 which generates server-side validation: an empty Title submission
-re-renders the form with a 400 status and an error message. The
-generated form template passes `"Required" true` to the field partial,
-which emits a client-side `required` attribute. When an app ejects the
-form template (`templates/posts/form.html`), it copies the exact
-generated template line as-is — the client-side marker is lost because
-the ejected template is hand-edited for other reasons (status pills,
-publish/unpublish/delete buttons), and the form partials inherit the
-field's error rendering, so server-side validation still works. The
-server is authoritative: a blank Title from any path (hand template or
-fresh client) gets the same 400 re-render.
+re-renders the form with a 400 status and an error message. Today's
+generated form template also passes `"Required" true` to the field
+partial, which emits a client-side `required` attribute — but
+`templates/posts/form.html` was ejected (copied out and hand-edited for
+other reasons: status pills, publish/unpublish/delete buttons) *before*
+`required = true` was added to the manifest, so the snapshot it copied
+predates the client-side marker. Ejection stops generation of that one
+file cold, so the marker never arrives — no future regen will add it,
+ejected or not. Server-side validation is untouched by any of this: the
+ejected template still inherits the field partial's error rendering, so
+a blank Title from either path gets the same 400 re-render. The server
+is authoritative; the client-side `required` attribute is a nicety this
+particular ejected file happens to be missing.
 
 ## Development
 

@@ -2,9 +2,8 @@
 // resource (manifest/ticket_types.toml), zero hand actions, zero
 // ejected templates. See the module README for what that proves.
 //
-// Run it from the app root — static assets are served from ./static,
-// so starting the binary from anywhere else 404s the stylesheet and
-// every screen renders unstyled:
+// Static assets are embedded (see the F8 note below), so the binary
+// runs the same from any starting directory:
 //
 //	cd examples/tickets && go build ./cmd/tickets && ./tickets -addr :8080
 package main
