@@ -3,9 +3,16 @@
 // manifest pipeline into a scratch directory and diffs it byte-for-
 // byte against the committed output (cmd/rastrillo/generate.go's own
 // doc comment on generate.GenerateManifests) — that IS this app's
-// double-regen byte-identity proof, not a separate thing to also
-// write: a second hand-rolled diff script would only re-implement
-// what --check already does.
+// double-regen byte-identity proof for everything the pipeline's own
+// emitters write, not a separate thing to also write: a second
+// hand-rolled diff script would only re-implement what --check
+// already does. The one thing it does NOT diff is sqlc's own compiled
+// output (gen/store/ticket_types/{queries.sql.go,models.go,db.go}) —
+// internal/generate/manifestgen.go's emitPipeline runs check-only with
+// runSqlc=false on purpose, so a --check never forces network/tool
+// access and never flags absent sqlc output as a false idempotency
+// failure. A hand-edited queries.sql.go would therefore slip past this
+// test; nothing here or in the framework catches that today.
 package ticketstest
 
 import (

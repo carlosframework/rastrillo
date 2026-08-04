@@ -80,10 +80,11 @@ even applies — there is no generator input to trip over.
 - `internal/ticketstest/` — the suite: a four-state round trip (create
   → show → edit unchanged → list), the filter round trip, required-400s
   for Name and Price, `"0"` accepted, and a `generate --check` test
-  that doubles as this app's regen byte-identity proof (`--check`
-  already diffs a scratch regen against the committed `gen/`
-  byte-for-byte — see `generatecheck_test.go`'s own doc comment for why
-  that's the whole proof, not half of one).
+  that doubles as this app's regen byte-identity proof for everything
+  the pipeline's own emitters write (`--check` already diffs a scratch
+  regen against the committed `gen/` byte-for-byte — see
+  `generatecheck_test.go`'s own doc comment for the one thing it
+  deliberately doesn't cover: sqlc's own compiled store output).
 - `static/tokens.css` — copied from `ui.TokensCSS()`, unedited.
 
 ## Development
