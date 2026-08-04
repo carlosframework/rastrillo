@@ -38,8 +38,8 @@
 //	                          though a re-render only happens, and so
 //	                          only those files call Render at all, when
 //	                          their own field group actually has a
-//	                          Money field to fail on (see "no
-//	                          validation branch" below). Every file
+//	                          Money field or a Required field to fail on
+//	                          (see "no validation branch" below). Every file
 //	                          that does call it uses this same name:
 //	                          form.html's IsNew flag is what tells the
 //	                          New state from the Edit state, not a
@@ -60,40 +60,59 @@
 //   - index.GET: parses q (only when List.Search is set — and only
 //     really used by the store when there is at least one eligible
 //     text/textarea List column; see searchColumns), one query param
-//     per List.Filter entry (named by its sqlName, e.g. ?title=), and
-//     page (default 1). Builds Rows from List.Columns[0] (Main) and,
-//     if declared, List.Columns[1] (Sub) — Money formatted as a dollar
-//     string via formatCents, everything else the raw column value.
-//     Pagination has no gap-collapsing (v1 simplification: every page
-//     number renders; see the report for the tradeoff).
+//     per filterFields(r) entry (store.go's dedup of bare List.Filter
+//     and List.Filters[].Field — named by its sqlName, e.g. ?title=),
+//     and page (default 1). A field ALSO declared via List.Filters
+//     (capped at one entry by Validate) gets its raw query value run
+//     through a generated normalize<Field> first — unknown/absent
+//     collapses to "" (all), never a 400 — and the action builds a
+//     filterView (SummaryKey/AriaField/Items, every label a T KEY, never
+//     a resolved string) the render call's listView.Filter carries;
+//     list.html renders it as an inline dropdown (see templates.go).
+//     A bare-only List.Filter field (no List.Filters counterpart) still
+//     gets its query param parsed/carried/bound as a raw passthrough,
+//     exactly as before this — it has no enumerable Values to build a
+//     control or a normalizer from. Builds Rows from List.Columns[0]
+//     (Main) and, if declared, List.Columns[1] (Sub) — Money formatted
+//     as a dollar string via formatCents, everything else the raw
+//     column value. Pagination has no gap-collapsing (v1
+//     simplification: every page number renders; see the report for
+//     the tradeoff).
 //   - index.POST (create): parses every Form.Basics + Form.Advanced
 //     field; a Money field's value is parsed as decimal dollars via
-//     parseCents, which rejects more than two decimal places. Any
-//     parse failure re-renders "<name>/form" (IsNew: true) at 400 with
-//     the field's message in Errors and every field's raw submitted
-//     text preserved in Fields — never reformatted, so a typo stays
-//     exactly as typed for correction. Success stamps both timestamps
-//     with the same UTC RFC3339 "now" and redirects 303 to Show.
+//     parseCents, which rejects more than two decimal places, and any
+//     field (Text, Textarea or Money) the manifest marks Required is
+//     checked for blankness — Text/Textarea via strings.TrimSpace,
+//     Money via its RAW submitted text (so "0"/"0.00" is a valid
+//     required value; only an empty input trips the required check —
+//     see parseField). Any parse failure or required-blank failure
+//     re-renders "<name>/form" (IsNew: true) at 400 with the field's
+//     message in Errors and every field's raw submitted text preserved
+//     in Fields — never reformatted, so a typo stays exactly as typed
+//     for correction. A Required Money field that's both blank AND
+//     would otherwise fail to parse (it never does — "" parses to zero,
+//     see parseCents) only ever reports the required message, never
+//     both; a present-but-invalid Money value reports the parse error,
+//     never the required one — see parseField's Money case. Success
+//     stamps both timestamps with the same UTC RFC3339 "now" and
+//     redirects 303 to Show.
 //   - [id]/index.GET (show): Get-or-404, then every declared field
 //     (columns(r) order) into Fields, Money formatted.
 //   - new.GET / [id]/edit.GET: render "<name>/form" with zero values
 //     (New) or the record's current values (Edit, Get-or-404 first).
 //   - [id]/edit-basics.POST / [id]/edit-advanced.POST: Get-or-404 (to
 //     answer 404 before ever attempting an UPDATE against a missing
-//     row, and — only when this field group has a Money field — to
-//     source the OTHER group's current values for the 400 re-render),
-//     then parse and update only that field group. A Money parse
-//     failure re-renders "<name>/form" (IsNew: false) at 400 with
-//     Fields seeded from the fetched record and overridden with this
-//     group's just-submitted raw text. A field group with no Money
+//     row, and — only when this field group has a Money field or a
+//     Required field — to source the OTHER group's current values for
+//     the 400 re-render), then parse and update only that field group.
+//     A Money parse failure or a Required-blank failure re-renders
+//     "<name>/form" (IsNew: false) at 400 with Fields seeded from the
+//     fetched record and overridden with this group's just-submitted
+//     raw text. A field group with no Money field and no Required
 //     field at all has no validation branch to speak of — generation
-//     time already knows no parse can fail, so none is emitted (the
-//     same "bake what the manifest already decided" discipline
+//     time already knows no check here can fail, so none is emitted
+//     (the same "bake what the manifest already decided" discipline
 //     templates.go uses for the Advanced-form and Search gates).
-//
-// No server-side required-field validation exists anywhere in this
-// slice (a deliberate v1 rule) — an empty Money field parses to zero
-// cents, never an error.
 package generate
 
 import (
@@ -287,13 +306,13 @@ func zeroFieldsMapLiteral(r rastrillo.Resource) string {
 	return b.String()
 }
 
-// filterVar is one List.Filter entry's generated shape: a query-string
-// key (its sqlName) and a local variable name ("filter" + the declared
-// name, used as-is — not reconstructed through sqlName/pascalCase).
-// Param — "Filter"+Field — has to spell exactly what sqlc names the
-// CountXParams/ListXParams struct field for this filter, and sqlc
-// derives that name as pascalCase(sqlName(f)), NOT f itself. Those two
-// only agree for every identPattern-valid f because
+// filterVar is one filterFields(r) entry's generated shape: a
+// query-string key (its sqlName) and a local variable name ("filter" +
+// the declared name, used as-is — not reconstructed through
+// sqlName/pascalCase). Param — "Filter"+Field — has to spell exactly
+// what sqlc names the CountXParams/ListXParams struct field for this
+// filter, and sqlc derives that name as pascalCase(sqlName(f)), NOT f
+// itself. Those two only agree for every identPattern-valid f because
 // rastrillo.Resource.Validate additionally rejects any field/column
 // name where pascalCase(sqlName(name)) != name (see manifest.go) —
 // without that guarantee a name like "title" or "IPAddress" would
@@ -309,9 +328,19 @@ type filterVar struct {
 	Param string // the store Params field name, "Filter"+Field
 }
 
+// filterVars walks filterFields(r) — the deduped union of bare
+// List.Filter and List.Filters[].Field (store.go) — rather than
+// r.List.Filter alone, so a field declared ONLY via List.Filters (with
+// enumerable Values, no bare List.Filter entry) still gets its query
+// param parsed, carried and bound to the store's filter_<col> arg; the
+// same WHERE clause (whereClauses in store.go) already honors it either
+// way, so the action-side param handling has to keep up. A field
+// present in both collections (the filteredFixtureResource shape:
+// declared as both a bare Filter and a Filters[] with Values) appears
+// here exactly once.
 func filterVars(r rastrillo.Resource) []filterVar {
 	var out []filterVar
-	for _, f := range r.List.Filter {
+	for _, f := range filterFields(r) {
 		out = append(out, filterVar{
 			Field: f,
 			Query: sqlName(f),
@@ -320,6 +349,21 @@ func filterVars(r rastrillo.Resource) []filterVar {
 		})
 	}
 	return out
+}
+
+// declaredFilter returns r's single List.Filters entry, if declared:
+// Validate caps List.Filters at exactly one (len(r.List.Filters) > 1 is
+// rejected — manifest.go), so "declared" here always means exactly one
+// or none. Field always matches one of filterVars(r)'s own Field
+// values, since filterFields unions List.Filter and List.Filters[].Field
+// (store.go) — a Filters entry can never be absent from that union.
+// Values is its enumerable dropdown choices, already validated non-empty
+// and deduped by Validate.
+func declaredFilter(r rastrillo.Resource) (field string, values []string, ok bool) {
+	if len(r.List.Filters) != 1 {
+		return "", nil, false
+	}
+	return r.List.Filters[0].Field, r.List.Filters[0].Values, true
 }
 
 // ── Shared boilerplate, identical across all seven files for a given
@@ -407,12 +451,13 @@ func formatCentsPlain(cents int64) string {
 
 // parseCents parses a decimal-dollars string (e.g. "12.34") into
 // cents, rejecting more than two decimal places. An empty string
-// parses to zero cents, not an error — v1 has no server-side
-// required-field validation. v1 also has no use for negative prices,
-// so any sign character is rejected outright as a field error rather
-// than accepted and applied: the whole and fractional parts must each
-// be composed entirely of ASCII digits. This is stricter than handing
-// each half to strconv.ParseInt directly (an earlier draft did),
+// parses to zero cents, not an error — a Required Money field rejects
+// blankness on the raw text before this runs. v1 also has no use for
+// negative prices, so any sign character is rejected outright as a
+// field error rather than accepted and applied: the whole and
+// fractional parts must each be composed entirely of ASCII digits.
+// This is stricter than handing each half to strconv.ParseInt
+// directly (an earlier draft did),
 // which happily accepts its own leading "+"/"-" in either half — so
 // "12.-5" or "12.+5" would silently mis-parse into a different
 // magnitude than the digits alone suggest, rather than being rejected
@@ -463,15 +508,46 @@ func isDigits(s string) bool {
 `, name+": ", name+": ")
 }
 
-const listViewTypes = `
+// listViewTypes renders index.GET's data-shape types. hasFilter is
+// false for every resource without a declared List.Filters entry — the
+// exact string this function returned before Filter existed at all, so
+// that byte-identical regression golden (fixtureResource/
+// filterOnlyFixtureResource, neither of which declares List.Filters)
+// never sees a Filter field it has no data for. hasFilter true (a
+// declared List.Filters — see declaredFilter) adds listView.Filter and
+// the filterView/filterItem pair the dropdown markup in list.html reads
+// (see templates.go's listHTML): LabelKey fields, never resolved
+// strings — the template resolves each one itself via (T .LabelKey) at
+// render time, since only the template has a bound T (see the package
+// doc's "labels resolve at RENDER time" note on actionIndexGET).
+func listViewTypes(hasFilter bool) string {
+	filterField := ""
+	filterTypes := ""
+	if hasFilter {
+		filterField = "\tFilter     filterView\n"
+		filterTypes = `
+type filterView struct {
+	SummaryKey string
+	AriaField  string
+	Items      []filterItem
+}
+
+type filterItem struct {
+	Href     string
+	LabelKey string
+	Current  bool
+}
+`
+	}
+	return fmt.Sprintf(`
 type listView struct {
 	Empty      bool
 	Query      string
 	Carry      [][2]string
-	Rows       []listRow
+%sRows       []listRow
 	Pagination listPagination
 }
-
+%s
 type listRow struct {
 	Href string
 	Main string
@@ -490,7 +566,8 @@ type listPageItem struct {
 	Disabled bool
 	Gap      bool
 }
-`
+`, filterField, filterTypes)
+}
 
 const showViewType = `
 type showView struct {
@@ -519,6 +596,27 @@ func actionIndexGET(r rastrillo.Resource, module string) string {
 	searchParam := r.List.Search && len(searchColumns(r)) > 0
 	main, sub, hasSub := mainSubColumns(r)
 
+	// declaredField/declaredValues/filtersDeclared drive the ONE thing
+	// this task adds beyond filterVars' plain query-param plumbing: a
+	// rendered dropdown control. A bare List.Filter entry (no Filters)
+	// still gets its query param parsed and bound above — it just has no
+	// enumerable Values to build a control or a normalize function from
+	// (see the package doc's "still validated, generates the WHERE
+	// clause but no control" note), so it stays a raw passthrough exactly
+	// as before this task. declaredVar resolves the matching filterVar by
+	// Field — always found, since filterFields (store.go) always
+	// includes a declared Filters[].Field in its union.
+	declaredField, declaredValues, filtersDeclared := declaredFilter(r)
+	var declaredVar filterVar
+	if filtersDeclared {
+		for _, fv := range fvars {
+			if fv.Field == declaredField {
+				declaredVar = fv
+				break
+			}
+		}
+	}
+
 	var b strings.Builder
 	b.WriteString("import (\n")
 	b.WriteString("\t\"fmt\"\n")
@@ -539,7 +637,11 @@ func actionIndexGET(r rastrillo.Resource, module string) string {
 		searchExpr = "search"
 	}
 	for _, fv := range fvars {
-		fmt.Fprintf(&b, "%s := r.URL.Query().Get(%q)\n", fv.Var, fv.Query)
+		if filtersDeclared && fv.Field == declaredField {
+			fmt.Fprintf(&b, "%s := normalize%s(r.URL.Query().Get(%q))\n", fv.Var, fv.Field, fv.Query)
+		} else {
+			fmt.Fprintf(&b, "%s := r.URL.Query().Get(%q)\n", fv.Var, fv.Query)
+		}
 	}
 
 	b.WriteString(`
@@ -655,16 +757,22 @@ if show {
 }
 `)
 
+	filterField := ""
+	if filtersDeclared {
+		b.WriteString(filterViewStmts(r, declaredVar, declaredValues, searchExpr))
+		filterField = "Filter:      filter,\n"
+	}
+
 	fmt.Fprintf(&b, `
 render(ctx, w, %q, http.StatusOK, listView{
 	Empty:      total == 0,
 	Query:      %s,
 	Carry:      carry,
-	Rows:       items,
+	%sRows:       items,
 	Pagination: listPagination{Show: show, Items: pageItems},
 })
 }
-`, r.Name+"/list", searchExpr)
+`, r.Name+"/list", searchExpr, filterField)
 
 	fmt.Fprintf(&b, `
 // href builds one list/pagination link, preserving the current search
@@ -682,8 +790,112 @@ func href(search string, carry [][2]string, page int) string {
 }
 `, r.Route)
 
-	b.WriteString(listViewTypes)
+	if filtersDeclared {
+		b.WriteString(filterHelperFuncs(r, declaredVar, declaredValues))
+	}
+
+	b.WriteString(listViewTypes(filtersDeclared))
 	b.WriteString(helperFuncs(r.Name))
+	return b.String()
+}
+
+// filterViewStmts renders the Handle-body statements that build the
+// declared filter's filterView value (assigned to the local "filter"
+// listView reads into its Filter field): a "" All item first, then one
+// item per declared value, in declaration order — matching the "All
+// first" ordering the blog's hand pattern (BuildStatusFilter) set. Every
+// Href goes through fv.Field's own filter<Field>Href, which — per the
+// brief's contract — carries the current search and this ONE filter
+// value, never page (changing a filter starts over at page 1). It also
+// never carries any OTHER filterVar's current query value — unlike
+// pagination's href, which loops the full carry slice. That only
+// matters for a bare List.Filter field (a raw WHERE-clause passthrough
+// with no [[list.filters]] entry and so no generated dropdown of its
+// own): its active query param is silently dropped by a click on this
+// dropdown. Narrow in practice — no shipped example combines a bare
+// List.Filter field with a declared List.Filters field on the same
+// resource — but real should that combination ever appear.
+// Every label is a T KEY (filter<Field>LabelKey), never a resolved
+// string — only list.html's template execution has a bound T (see the
+// package doc's "labels resolve at RENDER time" note).
+func filterViewStmts(r rastrillo.Resource, fv filterVar, values []string, searchExpr string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "\nfilter := filterView{\n")
+	fmt.Fprintf(&b, "SummaryKey: filter%sLabelKey(%s),\n", fv.Field, fv.Var)
+	fmt.Fprintf(&b, "AriaField:  %q,\n", resourceKey(r.Name, "field."+fv.Query))
+	b.WriteString("Items: []filterItem{\n")
+	fmt.Fprintf(&b, "{Href: filter%sHref(%s, \"\"), LabelKey: filter%sLabelKey(\"\"), Current: %s == \"\"},\n",
+		fv.Field, searchExpr, fv.Field, fv.Var)
+	for _, v := range values {
+		fmt.Fprintf(&b, "{Href: filter%sHref(%s, %q), LabelKey: filter%sLabelKey(%q), Current: %s == %q},\n",
+			fv.Field, searchExpr, v, fv.Field, v, fv.Var, v)
+	}
+	b.WriteString("},\n}\n")
+	return b.String()
+}
+
+// filterHelperFuncs renders the three package-level functions the
+// declared filter's dropdown needs — normalize<Field>, filter<Field>
+// LabelKey and filter<Field>Href — parameterized on the resource so
+// AriaField and every LabelKey/Href reference this resource's own name,
+// route and sqlName(fv.Field), matching resourceKey's "resource.<name>.
+// <suffix>" shape (templates.go) and sqlName's column-name convention
+// (store.go) exactly, so the T keys this emits are the SAME keys
+// EmitLocales (a later task) must cover.
+func filterHelperFuncs(r rastrillo.Resource, fv filterVar, values []string) string {
+	var b strings.Builder
+	quoted := make([]string, len(values))
+	for i, v := range values {
+		quoted[i] = fmt.Sprintf("%q", v)
+	}
+	fmt.Fprintf(&b, `
+// normalize%s maps a raw query value onto %s's declared filter values:
+// anything else — an empty string, a stale bookmark, a hand-edited URL —
+// normalizes to "" (all), never a 400.
+func normalize%s(raw string) string {
+	switch raw {
+	case %s:
+		return raw
+	}
+	return ""
+}
+
+// filter%sLabelKey resolves a normalized %s value ("" or a declared
+// value) to its catalog key; T renders it at request time, never here.
+func filter%sLabelKey(v string) string {
+	if v == "" {
+		return "ui.all"
+	}
+	return %q + v
+}
+
+// filter%sHref builds one %s dropdown item's link: the current search
+// plus this filter value (never page — changing a filter starts at page
+// 1 by construction), value == "" for the "All" item.
+func filter%sHref(search, value string) string {
+	var params []string
+	if search != "" {
+		params = append(params, "q="+url.QueryEscape(search))
+	}
+	if value != "" {
+		params = append(params, %q+url.QueryEscape(value))
+	}
+	if len(params) == 0 {
+		return %q
+	}
+	return %q + "?" + strings.Join(params, "&")
+}
+`,
+		fv.Field, fv.Field,
+		fv.Field, strings.Join(quoted, ", "),
+		fv.Field, fv.Field,
+		fv.Field, resourceKey(r.Name, "filter."+fv.Query)+".",
+		fv.Field, fv.Field,
+		fv.Field,
+		fv.Query+"=",
+		r.Route,
+		r.Route,
+	)
 	return b.String()
 }
 
@@ -935,9 +1147,9 @@ render(ctx, w, %q, http.StatusOK, formView{
 
 // updatePOST builds edit-basics.POST or edit-advanced.POST: they are
 // the same shape (Get-or-404, parse this group's fields, update,
-// redirect — or, only when this group declares a Money field, a
-// validation branch), parameterized on which field group and which
-// sqlc Update query own it.
+// redirect — or, only when this group declares a Money field or a
+// Required field, a validation branch), parameterized on which field
+// group and which sqlc Update query own it.
 func updatePOST(r rastrillo.Resource, module string, group []rastrillo.Field, groupName string) string {
 	alias, path := storeImport(r, module)
 	singular := singularPascal(r.Name)
@@ -956,7 +1168,14 @@ func updatePOST(r rastrillo.Resource, module string, group []rastrillo.Field, gr
 			errChecks = append(errChecks, ec)
 		}
 	}
-	groupHasMoney := len(errChecks) > 0
+	// groupHasValidation is true when ANY field in this group can fail
+	// validation — a Money parse (any Money field) or a Required-blank
+	// check (any Required Text/Textarea/Money field). A group with
+	// neither has no way to fail, so no validation branch, no `errs`
+	// map, and no `n` (the fetched record) is needed at all — Get-or-404
+	// still runs (404 must win over a validation failure), its result
+	// just discarded.
+	groupHasValidation := len(errChecks) > 0
 
 	var paramLines []string
 	for _, f := range group {
@@ -991,7 +1210,7 @@ func updatePOST(r rastrillo.Resource, module string, group []rastrillo.Field, gr
 `)
 	fmt.Fprintf(&b, "store := %s.New(ctx.DB)\n", alias)
 
-	if groupHasMoney {
+	if groupHasValidation {
 		fmt.Fprintf(&b, "n, err := store.Get%s(r.Context(), id)\n", singular)
 	} else {
 		fmt.Fprintf(&b, "_, err := store.Get%s(r.Context(), id)\n", singular)
@@ -1007,7 +1226,7 @@ func updatePOST(r rastrillo.Resource, module string, group []rastrillo.Field, gr
 		b.WriteString(d)
 	}
 
-	if groupHasMoney {
+	if groupHasValidation {
 		b.WriteString("\nerrs := map[string]string{}\n")
 		for _, ec := range errChecks {
 			b.WriteString(ec)
@@ -1037,7 +1256,7 @@ func updatePOST(r rastrillo.Resource, module string, group []rastrillo.Field, gr
 	fmt.Fprintf(&b, "fail(ctx, w, %q, err)\nreturn\n}\n", "updating "+r.Name)
 	fmt.Fprintf(&b, "http.Redirect(w, r, fmt.Sprintf(%q, id), http.StatusSeeOther)\n}\n", r.Route+"/%d")
 
-	if groupHasMoney {
+	if groupHasValidation {
 		b.WriteString(formViewType)
 	}
 	b.WriteString(helperFuncs(r.Name))
@@ -1059,33 +1278,78 @@ type parsedField struct {
 	Decls     string // Go statements assigning its local variable(s)
 	ParamLine string // e.g. "Price: vPrice,\n" — a store Params field
 	RawExpr   string // the just-submitted value, for a 400 re-render's Fields override
-	ErrCheck  string // "" or an `if errX != nil { errs["Price"] = ... }` block
+	ErrCheck  string // "" or an `if ... { errs["Price"] = ... }` block (a parse failure, a Required-blank failure, or both in sequence — see the Money case)
+}
+
+// requiredMessage renders f's required-field error text: literal
+// English containing "required", reusing manifestlocales.go's titleCase
+// so the field name reads the same human way its own form label does
+// ("Title" -> "Title is required", "MaxPerOrder" -> "Max per order is
+// required") without needing a locale catalog lookup — this string
+// isn't translated, it's a plain server-side validation message.
+func requiredMessage(f rastrillo.Field) string {
+	return titleCase(f.Name) + " is required"
 }
 
 func parseField(f rastrillo.Field) parsedField {
 	v := "v" + f.Name
 	switch f.Kind {
 	case rastrillo.Textarea:
+		var errCheck string
+		if f.Required {
+			// Textarea's Decls (unlike Text's) keeps the raw submitted
+			// value untrimmed — RawExpr must preserve exactly what was
+			// typed for the 400 re-render's Fields override — so the
+			// required check trims here, not at Decls.
+			errCheck = fmt.Sprintf("if strings.TrimSpace(%s) == \"\" {\nerrs[%q] = %q\n}\n", v, f.Name, requiredMessage(f))
+		}
 		return parsedField{
 			Decls:     fmt.Sprintf("%s := r.PostFormValue(%q)\n", v, f.Name),
 			ParamLine: fmt.Sprintf("%s: %s,\n", f.Name, v),
 			RawExpr:   v,
+			ErrCheck:  errCheck,
 		}
 	case rastrillo.Money:
 		raw := v + "Raw"
 		errVar := "err" + f.Name
+		var errCheck string
+		if f.Required {
+			// Required-ness is checked against the RAW submitted text,
+			// not the parsed cents value: parseCents("") succeeds with
+			// 0 (see its own doc), so an empty input never trips
+			// errVar != nil on its own — only the raw == "" branch
+			// below catches it. "0"/"0.00" is a non-empty raw string
+			// that parses cleanly, so it lands in neither branch and is
+			// accepted, matching the brief's "0 is a valid required
+			// Money value". A present-but-invalid value (raw != "")
+			// falls to the else-if and reports the parse error, never
+			// the required one.
+			errCheck = fmt.Sprintf("if %s == \"\" {\nerrs[%q] = %q\n} else if %s != nil {\nerrs[%q] = %s.Error()\n}\n",
+				raw, f.Name, requiredMessage(f), errVar, f.Name, errVar)
+		} else {
+			errCheck = fmt.Sprintf("if %s != nil {\nerrs[%q] = %s.Error()\n}\n", errVar, f.Name, errVar)
+		}
 		return parsedField{
 			Decls: fmt.Sprintf("%s := r.PostFormValue(%q)\n%s, %s := parseCents(%s)\n",
 				raw, f.Name, v, errVar, raw),
 			ParamLine: fmt.Sprintf("%s: %s,\n", f.Name, v),
 			RawExpr:   raw,
-			ErrCheck:  fmt.Sprintf("if %s != nil {\nerrs[%q] = %s.Error()\n}\n", errVar, f.Name, errVar),
+			ErrCheck:  errCheck,
 		}
 	default: // Text
+		var errCheck string
+		if f.Required {
+			// Decls already trims (strings.TrimSpace, below), so v
+			// itself is the value to check — no second TrimSpace needed
+			// here (contrast the Textarea case, whose Decls does NOT
+			// trim, for RawExpr's sake).
+			errCheck = fmt.Sprintf("if %s == \"\" {\nerrs[%q] = %q\n}\n", v, f.Name, requiredMessage(f))
+		}
 		return parsedField{
 			Decls:     fmt.Sprintf("%s := strings.TrimSpace(r.PostFormValue(%q))\n", v, f.Name),
 			ParamLine: fmt.Sprintf("%s: %s,\n", f.Name, v),
 			RawExpr:   v,
+			ErrCheck:  errCheck,
 		}
 	}
 }

@@ -238,12 +238,13 @@ func formatCentsPlain(cents int64) string {
 
 // parseCents parses a decimal-dollars string (e.g. "12.34") into
 // cents, rejecting more than two decimal places. An empty string
-// parses to zero cents, not an error — v1 has no server-side
-// required-field validation. v1 also has no use for negative prices,
-// so any sign character is rejected outright as a field error rather
-// than accepted and applied: the whole and fractional parts must each
-// be composed entirely of ASCII digits. This is stricter than handing
-// each half to strconv.ParseInt directly (an earlier draft did),
+// parses to zero cents, not an error — a Required Money field rejects
+// blankness on the raw text before this runs. v1 also has no use for
+// negative prices, so any sign character is rejected outright as a
+// field error rather than accepted and applied: the whole and
+// fractional parts must each be composed entirely of ASCII digits.
+// This is stricter than handing each half to strconv.ParseInt
+// directly (an earlier draft did),
 // which happily accepts its own leading "+"/"-" in either half — so
 // "12.-5" or "12.+5" would silently mis-parse into a different
 // magnitude than the digits alone suggest, rather than being rejected
@@ -428,12 +429,13 @@ func formatCentsPlain(cents int64) string {
 
 // parseCents parses a decimal-dollars string (e.g. "12.34") into
 // cents, rejecting more than two decimal places. An empty string
-// parses to zero cents, not an error — v1 has no server-side
-// required-field validation. v1 also has no use for negative prices,
-// so any sign character is rejected outright as a field error rather
-// than accepted and applied: the whole and fractional parts must each
-// be composed entirely of ASCII digits. This is stricter than handing
-// each half to strconv.ParseInt directly (an earlier draft did),
+// parses to zero cents, not an error — a Required Money field rejects
+// blankness on the raw text before this runs. v1 also has no use for
+// negative prices, so any sign character is rejected outright as a
+// field error rather than accepted and applied: the whole and
+// fractional parts must each be composed entirely of ASCII digits.
+// This is stricter than handing each half to strconv.ParseInt
+// directly (an earlier draft did),
 // which happily accepts its own leading "+"/"-" in either half — so
 // "12.-5" or "12.+5" would silently mis-parse into a different
 // magnitude than the digits alone suggest, rather than being rejected
@@ -616,12 +618,13 @@ func formatCentsPlain(cents int64) string {
 
 // parseCents parses a decimal-dollars string (e.g. "12.34") into
 // cents, rejecting more than two decimal places. An empty string
-// parses to zero cents, not an error — v1 has no server-side
-// required-field validation. v1 also has no use for negative prices,
-// so any sign character is rejected outright as a field error rather
-// than accepted and applied: the whole and fractional parts must each
-// be composed entirely of ASCII digits. This is stricter than handing
-// each half to strconv.ParseInt directly (an earlier draft did),
+// parses to zero cents, not an error — a Required Money field rejects
+// blankness on the raw text before this runs. v1 also has no use for
+// negative prices, so any sign character is rejected outright as a
+// field error rather than accepted and applied: the whole and
+// fractional parts must each be composed entirely of ASCII digits.
+// This is stricter than handing each half to strconv.ParseInt
+// directly (an earlier draft did),
 // which happily accepts its own leading "+"/"-" in either half — so
 // "12.-5" or "12.+5" would silently mis-parse into a different
 // magnitude than the digits alone suggest, rather than being rejected
@@ -838,12 +841,13 @@ func formatCentsPlain(cents int64) string {
 
 // parseCents parses a decimal-dollars string (e.g. "12.34") into
 // cents, rejecting more than two decimal places. An empty string
-// parses to zero cents, not an error — v1 has no server-side
-// required-field validation. v1 also has no use for negative prices,
-// so any sign character is rejected outright as a field error rather
-// than accepted and applied: the whole and fractional parts must each
-// be composed entirely of ASCII digits. This is stricter than handing
-// each half to strconv.ParseInt directly (an earlier draft did),
+// parses to zero cents, not an error — a Required Money field rejects
+// blankness on the raw text before this runs. v1 also has no use for
+// negative prices, so any sign character is rejected outright as a
+// field error rather than accepted and applied: the whole and
+// fractional parts must each be composed entirely of ASCII digits.
+// This is stricter than handing each half to strconv.ParseInt
+// directly (an earlier draft did),
 // which happily accepts its own leading "+"/"-" in either half — so
 // "12.-5" or "12.+5" would silently mis-parse into a different
 // magnitude than the digits alone suggest, rather than being rejected
@@ -892,6 +896,847 @@ func isDigits(s string) bool {
 	return true
 }
 `
+
+// goldenFilteredIndexGETGo is EmitActions' output for
+// filteredFixtureResource()'s index.GET (List): Status is declared BOTH
+// as a bare List.Filter and as a List.Filters entry with Values
+// draft/live — filterFields dedupes the two to one filterVar, but
+// because it IS also declared via Filters, its raw query read is
+// replaced with normalizeStatus(...) (unknown/absent -> "", never a raw
+// passthrough) and Handle builds a filterView the render call's Filter
+// field carries: SummaryKey/AriaField/each Item's LabelKey are T KEYS,
+// never resolved strings (see the package doc's "labels resolve at
+// RENDER time" note) — resource.events.filter.status.<value> per
+// declared value, resource.events.field.status for AriaField, ui.all
+// for the "All" item and the applied-value summary when none is
+// applied. Every Href goes through filterStatusHref, which carries the
+// current search and this ONE filter value, never page.
+const goldenFilteredIndexGETGo = `// Code generated by rastrillo generate. DO NOT EDIT.
+
+package act_admin_events_index_get
+
+import (
+	"fmt"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+
+	"github.com/carlosframework/rastrillo"
+	eventsstore "scratch/gen/store/events"
+)
+
+// Handle is GET /admin/events.
+func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
+	search := strings.TrimSpace(r.URL.Query().Get("q"))
+	filterStatus := normalizeStatus(r.URL.Query().Get("status"))
+
+	page := 1
+	if v := r.URL.Query().Get("page"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			page = n
+		}
+	}
+	const pageSize = 10
+	offset := (page - 1) * pageSize
+
+	var carry [][2]string
+	if filterStatus != "" {
+		carry = append(carry, [2]string{"status", filterStatus})
+	}
+
+	store := eventsstore.New(ctx.DB)
+	total, err := store.CountEvents(r.Context(), eventsstore.CountEventsParams{
+		Search:       search,
+		FilterStatus: filterStatus,
+	})
+	if err != nil {
+		fail(ctx, w, "counting events", err)
+		return
+	}
+	rows, err := store.ListEvents(r.Context(), eventsstore.ListEventsParams{
+		Search:       search,
+		FilterStatus: filterStatus,
+		PageOffset:   int64(offset),
+		PageLimit:    pageSize,
+	})
+	if err != nil {
+		fail(ctx, w, "loading events", err)
+		return
+	}
+
+	items := make([]listRow, 0, len(rows))
+	for _, n := range rows {
+		items = append(items, listRow{
+			Href: fmt.Sprintf("/admin/events/%d", n.ID),
+			Main: n.Title,
+			Sub:  n.Status,
+		})
+	}
+
+	totalPages := (int(total) + pageSize - 1) / pageSize
+	show := int(total) > pageSize
+	var pageItems []listPageItem
+	if show {
+		prev := listPageItem{Label: "Previous", Disabled: true}
+		if page > 1 {
+			prev = listPageItem{Label: "Previous", Href: href(search, carry, page-1)}
+		}
+		pageItems = append(pageItems, prev)
+		for n := 1; n <= totalPages; n++ {
+			if n == page {
+				pageItems = append(pageItems, listPageItem{Label: strconv.Itoa(n), Current: true})
+			} else {
+				pageItems = append(pageItems, listPageItem{Label: strconv.Itoa(n), Href: href(search, carry, n)})
+			}
+		}
+		next := listPageItem{Label: "Next", Disabled: true}
+		if page < totalPages {
+			next = listPageItem{Label: "Next", Href: href(search, carry, page+1)}
+		}
+		pageItems = append(pageItems, next)
+	}
+
+	filter := filterView{
+		SummaryKey: filterStatusLabelKey(filterStatus),
+		AriaField:  "resource.events.field.status",
+		Items: []filterItem{
+			{Href: filterStatusHref(search, ""), LabelKey: filterStatusLabelKey(""), Current: filterStatus == ""},
+			{Href: filterStatusHref(search, "draft"), LabelKey: filterStatusLabelKey("draft"), Current: filterStatus == "draft"},
+			{Href: filterStatusHref(search, "live"), LabelKey: filterStatusLabelKey("live"), Current: filterStatus == "live"},
+		},
+	}
+
+	render(ctx, w, "events/list", http.StatusOK, listView{
+		Empty:      total == 0,
+		Query:      search,
+		Carry:      carry,
+		Filter:     filter,
+		Rows:       items,
+		Pagination: listPagination{Show: show, Items: pageItems},
+	})
+}
+
+// href builds one list/pagination link, preserving the current search
+// and filter values and setting page.
+func href(search string, carry [][2]string, page int) string {
+	var params []string
+	if search != "" {
+		params = append(params, "q="+url.QueryEscape(search))
+	}
+	for _, kv := range carry {
+		params = append(params, kv[0]+"="+url.QueryEscape(kv[1]))
+	}
+	params = append(params, "page="+strconv.Itoa(page))
+	return "/admin/events" + "?" + strings.Join(params, "&")
+}
+
+// normalizeStatus maps a raw query value onto Status's declared filter values:
+// anything else — an empty string, a stale bookmark, a hand-edited URL —
+// normalizes to "" (all), never a 400.
+func normalizeStatus(raw string) string {
+	switch raw {
+	case "draft", "live":
+		return raw
+	}
+	return ""
+}
+
+// filterStatusLabelKey resolves a normalized Status value ("" or a declared
+// value) to its catalog key; T renders it at request time, never here.
+func filterStatusLabelKey(v string) string {
+	if v == "" {
+		return "ui.all"
+	}
+	return "resource.events.filter.status." + v
+}
+
+// filterStatusHref builds one Status dropdown item's link: the current search
+// plus this filter value (never page — changing a filter starts at page
+// 1 by construction), value == "" for the "All" item.
+func filterStatusHref(search, value string) string {
+	var params []string
+	if search != "" {
+		params = append(params, "q="+url.QueryEscape(search))
+	}
+	if value != "" {
+		params = append(params, "status="+url.QueryEscape(value))
+	}
+	if len(params) == 0 {
+		return "/admin/events"
+	}
+	return "/admin/events" + "?" + strings.Join(params, "&")
+}
+
+type listView struct {
+	Empty      bool
+	Query      string
+	Carry      [][2]string
+	Filter     filterView
+	Rows       []listRow
+	Pagination listPagination
+}
+
+type filterView struct {
+	SummaryKey string
+	AriaField  string
+	Items      []filterItem
+}
+
+type filterItem struct {
+	Href     string
+	LabelKey string
+	Current  bool
+}
+
+type listRow struct {
+	Href string
+	Main string
+	Sub  string
+}
+
+type listPagination struct {
+	Show  bool
+	Items []listPageItem
+}
+
+type listPageItem struct {
+	Label    string
+	Href     string
+	Current  bool
+	Disabled bool
+	Gap      bool
+}
+
+// fail logs through Ctx.Logger (when set) and answers a plain 500.
+func fail(ctx *rastrillo.Ctx, w http.ResponseWriter, what string, err error) {
+	if ctx.Logger != nil {
+		ctx.Logger.Error("events: "+what, "err", err)
+	}
+	http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+}
+
+// render hands data to the app's template tree through ctx.Render (see
+// rastrillo.Ctx's Render field) — a 500 with a clear log line stands in
+// for a template an app forgot to wire, rather than a nil-pointer panic.
+func render(ctx *rastrillo.Ctx, w http.ResponseWriter, page string, status int, data any) {
+	if ctx.Render == nil {
+		if ctx.Logger != nil {
+			ctx.Logger.Error("events: " + "Ctx.Render is nil; the app's ctx factory must set it")
+		}
+		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+		return
+	}
+	ctx.Render(ctx, w, page, status, data)
+}
+
+// parseID reads the {id} path value. A non-numeric id is a URL that
+// was never ours, so the caller answers 404 rather than 400.
+func parseID(r *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id < 1 {
+		return 0, false
+	}
+	return id, true
+}
+
+// formatCents renders cents as a dollar string for a DISPLAY context
+// (show.html's Fields/Title, index.GET's Rows) — the only money
+// formatting a generated template ever sees there; a template never
+// does money math itself. The sign, if any, is written once up front
+// against the absolute value: cents/100 and cents%100 both truncate
+// toward zero in Go, so naively formatting a negative cents value
+// directly (an earlier draft did) mangles it into something like
+// "$-1.-50" instead of "-$1.50". parseCents below never actually
+// hands this function a negative value (v1 rejects negative money
+// outright), but a stored value could in principle be negative from
+// some other path, so the sign is still handled correctly here as
+// defense in depth.
+func formatCents(cents int64) string {
+	sign := ""
+	if cents < 0 {
+		sign = "-"
+		cents = -cents
+	}
+	return fmt.Sprintf("%s$%d.%02d", sign, cents/100, cents%100)
+}
+
+// formatCentsPlain renders cents exactly like formatCents but without
+// the leading "$" — the formatter edit.GET (and the OTHER field
+// group's current values on a validation-failure re-render) must use
+// to seed a form field a browser might resubmit completely unchanged:
+// the seed has to be exactly what parseCents itself accepts back in,
+// and parseCents rejects a leading "$" (see its own doc). Using
+// formatCents there instead (an earlier draft did) meant resubmitting
+// an untouched Money field always 400ed.
+func formatCentsPlain(cents int64) string {
+	sign := ""
+	if cents < 0 {
+		sign = "-"
+		cents = -cents
+	}
+	return fmt.Sprintf("%s%d.%02d", sign, cents/100, cents%100)
+}
+
+// parseCents parses a decimal-dollars string (e.g. "12.34") into
+// cents, rejecting more than two decimal places. An empty string
+// parses to zero cents, not an error — a Required Money field rejects
+// blankness on the raw text before this runs. v1 also has no use for
+// negative prices, so any sign character is rejected outright as a
+// field error rather than accepted and applied: the whole and
+// fractional parts must each be composed entirely of ASCII digits.
+// This is stricter than handing each half to strconv.ParseInt
+// directly (an earlier draft did),
+// which happily accepts its own leading "+"/"-" in either half — so
+// "12.-5" or "12.+5" would silently mis-parse into a different
+// magnitude than the digits alone suggest, rather than being rejected
+// as the not-a-dollar-amount that it is.
+func parseCents(s string) (int64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, nil
+	}
+	whole, frac, hasFrac := strings.Cut(s, ".")
+	if hasFrac && len(frac) > 2 {
+		return 0, fmt.Errorf("enter a dollar amount with at most 2 decimal places")
+	}
+	for len(frac) < 2 {
+		frac += "0"
+	}
+	if whole == "" {
+		whole = "0"
+	}
+	if !isDigits(whole) || !isDigits(frac) {
+		return 0, fmt.Errorf("enter a valid dollar amount")
+	}
+	wholeN, err := strconv.ParseInt(whole, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("enter a valid dollar amount")
+	}
+	fracN, err := strconv.ParseInt(frac, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("enter a valid dollar amount")
+	}
+	return wholeN*100 + fracN, nil
+}
+
+// isDigits reports whether s is non-empty and every byte is an ASCII
+// digit — parseCents' guard against a sign character ("-"/"+")
+// slipping through either half via strconv.ParseInt's own leniency.
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+`
+
+// TestEmitActionsFilteredIndexGETGolden pins EmitActions' index.GET
+// output for filteredFixtureResource() (Status: bare List.Filter AND a
+// List.Filters entry with Values draft/live) against
+// goldenFilteredIndexGETGo — the Filters-declared counterpart to
+// TestEmitActionsGoldenFiles' goldenIndexGETGo, which stays pinned
+// against fixtureResource() (bare List.Filter only, no List.Filters)
+// completely unchanged by this task — that is this task's byte-identical
+// regression gate for a no-Filters resource, already enforced by the
+// existing (unmodified) TestEmitActionsGoldenFiles and
+// TestActionIndexGETCountCallShape.
+func TestEmitActionsFilteredIndexGETGolden(t *testing.T) {
+	appRoot := newActionsAppRoot(t)
+	genDir := t.TempDir()
+	r := filteredFixtureResource()
+
+	if _, _, err := EmitActions(appRoot, genDir, r); err != nil {
+		t.Fatalf("EmitActions: %v", err)
+	}
+
+	path := filepath.Join(genDir, "actions", "admin", "events", "index_get", "index.GET.go")
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if string(got) != goldenFilteredIndexGETGo {
+		t.Errorf("%s:\ngot:\n%s\nwant:\n%s", path, got, goldenFilteredIndexGETGo)
+	}
+}
+
+// goldenFilteredIndexPOSTGo is EmitActions' output for
+// filteredFixtureResource()'s index.POST (create): Title is Required
+// (Text, so the check is against the already-trimmed vTitle), Status is
+// not — exactly one errs check is emitted, pinning the shape parseField
+// generates for a Required Text field with no Money field anywhere in
+// the group (contrast goldenEditAdvancedPOSTGo's Money-only check).
+const goldenFilteredIndexPOSTGo = `// Code generated by rastrillo generate. DO NOT EDIT.
+
+package act_admin_events_index_post
+
+import (
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/carlosframework/rastrillo"
+	eventsstore "scratch/gen/store/events"
+)
+
+// Handle is POST /admin/events.
+func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad request.", http.StatusBadRequest)
+		return
+	}
+
+	vTitle := strings.TrimSpace(r.PostFormValue("Title"))
+	vStatus := strings.TrimSpace(r.PostFormValue("Status"))
+
+	errs := map[string]string{}
+	if vTitle == "" {
+		errs["Title"] = "Title is required"
+	}
+
+	if len(errs) > 0 {
+		render(ctx, w, "events/form", http.StatusBadRequest, formView{
+			IsNew: true,
+			Fields: map[string]string{
+				"Title":  vTitle,
+				"Status": vStatus,
+			},
+			Errors: errs,
+		})
+		return
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	store := eventsstore.New(ctx.DB)
+	id, err := store.CreateEvent(r.Context(), eventsstore.CreateEventParams{
+		Title:  vTitle,
+		Status: vStatus,
+		Now:    now,
+	})
+	if err != nil {
+		fail(ctx, w, "creating events", err)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/admin/events/%d", id), http.StatusSeeOther)
+}
+
+type formView struct {
+	IsNew          bool
+	Fields         map[string]string
+	Errors         map[string]string
+	BasicsAction   string
+	AdvancedAction string
+}
+
+// fail logs through Ctx.Logger (when set) and answers a plain 500.
+func fail(ctx *rastrillo.Ctx, w http.ResponseWriter, what string, err error) {
+	if ctx.Logger != nil {
+		ctx.Logger.Error("events: "+what, "err", err)
+	}
+	http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+}
+
+// render hands data to the app's template tree through ctx.Render (see
+// rastrillo.Ctx's Render field) — a 500 with a clear log line stands in
+// for a template an app forgot to wire, rather than a nil-pointer panic.
+func render(ctx *rastrillo.Ctx, w http.ResponseWriter, page string, status int, data any) {
+	if ctx.Render == nil {
+		if ctx.Logger != nil {
+			ctx.Logger.Error("events: " + "Ctx.Render is nil; the app's ctx factory must set it")
+		}
+		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+		return
+	}
+	ctx.Render(ctx, w, page, status, data)
+}
+
+// parseID reads the {id} path value. A non-numeric id is a URL that
+// was never ours, so the caller answers 404 rather than 400.
+func parseID(r *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id < 1 {
+		return 0, false
+	}
+	return id, true
+}
+
+// formatCents renders cents as a dollar string for a DISPLAY context
+// (show.html's Fields/Title, index.GET's Rows) — the only money
+// formatting a generated template ever sees there; a template never
+// does money math itself. The sign, if any, is written once up front
+// against the absolute value: cents/100 and cents%100 both truncate
+// toward zero in Go, so naively formatting a negative cents value
+// directly (an earlier draft did) mangles it into something like
+// "$-1.-50" instead of "-$1.50". parseCents below never actually
+// hands this function a negative value (v1 rejects negative money
+// outright), but a stored value could in principle be negative from
+// some other path, so the sign is still handled correctly here as
+// defense in depth.
+func formatCents(cents int64) string {
+	sign := ""
+	if cents < 0 {
+		sign = "-"
+		cents = -cents
+	}
+	return fmt.Sprintf("%s$%d.%02d", sign, cents/100, cents%100)
+}
+
+// formatCentsPlain renders cents exactly like formatCents but without
+// the leading "$" — the formatter edit.GET (and the OTHER field
+// group's current values on a validation-failure re-render) must use
+// to seed a form field a browser might resubmit completely unchanged:
+// the seed has to be exactly what parseCents itself accepts back in,
+// and parseCents rejects a leading "$" (see its own doc). Using
+// formatCents there instead (an earlier draft did) meant resubmitting
+// an untouched Money field always 400ed.
+func formatCentsPlain(cents int64) string {
+	sign := ""
+	if cents < 0 {
+		sign = "-"
+		cents = -cents
+	}
+	return fmt.Sprintf("%s%d.%02d", sign, cents/100, cents%100)
+}
+
+// parseCents parses a decimal-dollars string (e.g. "12.34") into
+// cents, rejecting more than two decimal places. An empty string
+// parses to zero cents, not an error — a Required Money field rejects
+// blankness on the raw text before this runs. v1 also has no use for
+// negative prices, so any sign character is rejected outright as a
+// field error rather than accepted and applied: the whole and
+// fractional parts must each be composed entirely of ASCII digits.
+// This is stricter than handing each half to strconv.ParseInt
+// directly (an earlier draft did),
+// which happily accepts its own leading "+"/"-" in either half — so
+// "12.-5" or "12.+5" would silently mis-parse into a different
+// magnitude than the digits alone suggest, rather than being rejected
+// as the not-a-dollar-amount that it is.
+func parseCents(s string) (int64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, nil
+	}
+	whole, frac, hasFrac := strings.Cut(s, ".")
+	if hasFrac && len(frac) > 2 {
+		return 0, fmt.Errorf("enter a dollar amount with at most 2 decimal places")
+	}
+	for len(frac) < 2 {
+		frac += "0"
+	}
+	if whole == "" {
+		whole = "0"
+	}
+	if !isDigits(whole) || !isDigits(frac) {
+		return 0, fmt.Errorf("enter a valid dollar amount")
+	}
+	wholeN, err := strconv.ParseInt(whole, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("enter a valid dollar amount")
+	}
+	fracN, err := strconv.ParseInt(frac, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("enter a valid dollar amount")
+	}
+	return wholeN*100 + fracN, nil
+}
+
+// isDigits reports whether s is non-empty and every byte is an ASCII
+// digit — parseCents' guard against a sign character ("-"/"+")
+// slipping through either half via strconv.ParseInt's own leniency.
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+`
+
+// TestEmitActionsFilteredIndexPOSTGolden pins EmitActions' index.POST
+// output for filteredFixtureResource() (Title: Required) against
+// goldenFilteredIndexPOSTGo. fixtureResource()'s own index.POST has no
+// golden test today (no Required/Money-parse-failure shape distinct
+// enough to need one before this task), so there is no separate
+// no-Required regression golden to keep pinned here — TestEmitActionsCompile
+// still proves fixtureResource()'s emitted create action compiles.
+func TestEmitActionsFilteredIndexPOSTGolden(t *testing.T) {
+	appRoot := newActionsAppRoot(t)
+	genDir := t.TempDir()
+	r := filteredFixtureResource()
+
+	if _, _, err := EmitActions(appRoot, genDir, r); err != nil {
+		t.Fatalf("EmitActions: %v", err)
+	}
+
+	path := filepath.Join(genDir, "actions", "admin", "events", "index_post", "index.POST.go")
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if string(got) != goldenFilteredIndexPOSTGo {
+		t.Errorf("%s:\ngot:\n%s\nwant:\n%s", path, got, goldenFilteredIndexPOSTGo)
+	}
+}
+
+// goldenFilteredEditBasicsPOSTGo is EmitActions' output for
+// filteredFixtureResource()'s [id]/edit-basics.POST: the same Required
+// Text-only shape as goldenFilteredIndexPOSTGo, but on the Get-then-
+// validate-then-Update path — pins that a Required field (with no Money
+// field in its group) now DOES get the `n, err :=` Get (its result feeds
+// the 400 re-render's Fields) and the validation branch, where before
+// this task an all-Text group with no Money field had neither (see
+// goldenEditBasicsPOSTGo, still pinned unchanged for fixtureResource()'s
+// own Title/Body group, which declares no Required field).
+const goldenFilteredEditBasicsPOSTGo = `// Code generated by rastrillo generate. DO NOT EDIT.
+
+package act_admin_events_id_edit_basics_post
+
+import (
+	"database/sql"
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/carlosframework/rastrillo"
+	eventsstore "scratch/gen/store/events"
+)
+
+// Handle is POST /admin/events/{id}/edit-basics.
+func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Bad request.", http.StatusBadRequest)
+		return
+	}
+	id, ok := parseID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	store := eventsstore.New(ctx.DB)
+	n, err := store.GetEvent(r.Context(), id)
+	if errors.Is(err, sql.ErrNoRows) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		fail(ctx, w, "loading events", err)
+		return
+	}
+
+	vTitle := strings.TrimSpace(r.PostFormValue("Title"))
+	vStatus := strings.TrimSpace(r.PostFormValue("Status"))
+
+	errs := map[string]string{}
+	if vTitle == "" {
+		errs["Title"] = "Title is required"
+	}
+
+	if len(errs) > 0 {
+		fields := map[string]string{
+			"Title":  n.Title,
+			"Status": n.Status,
+		}
+		fields["Title"] = vTitle
+		fields["Status"] = vStatus
+		render(ctx, w, "events/form", http.StatusBadRequest, formView{
+			IsNew:        false,
+			Fields:       fields,
+			Errors:       errs,
+			BasicsAction: fmt.Sprintf("/admin/events/%d/edit-basics", id),
+		})
+		return
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	if err := store.UpdateEventBasics(r.Context(), eventsstore.UpdateEventBasicsParams{
+		Title:  vTitle,
+		Status: vStatus,
+		Now:    now,
+		ID:     id,
+	}); err != nil {
+		fail(ctx, w, "updating events", err)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/admin/events/%d", id), http.StatusSeeOther)
+}
+
+type formView struct {
+	IsNew          bool
+	Fields         map[string]string
+	Errors         map[string]string
+	BasicsAction   string
+	AdvancedAction string
+}
+
+// fail logs through Ctx.Logger (when set) and answers a plain 500.
+func fail(ctx *rastrillo.Ctx, w http.ResponseWriter, what string, err error) {
+	if ctx.Logger != nil {
+		ctx.Logger.Error("events: "+what, "err", err)
+	}
+	http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+}
+
+// render hands data to the app's template tree through ctx.Render (see
+// rastrillo.Ctx's Render field) — a 500 with a clear log line stands in
+// for a template an app forgot to wire, rather than a nil-pointer panic.
+func render(ctx *rastrillo.Ctx, w http.ResponseWriter, page string, status int, data any) {
+	if ctx.Render == nil {
+		if ctx.Logger != nil {
+			ctx.Logger.Error("events: " + "Ctx.Render is nil; the app's ctx factory must set it")
+		}
+		http.Error(w, "Something went wrong.", http.StatusInternalServerError)
+		return
+	}
+	ctx.Render(ctx, w, page, status, data)
+}
+
+// parseID reads the {id} path value. A non-numeric id is a URL that
+// was never ours, so the caller answers 404 rather than 400.
+func parseID(r *http.Request) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id < 1 {
+		return 0, false
+	}
+	return id, true
+}
+
+// formatCents renders cents as a dollar string for a DISPLAY context
+// (show.html's Fields/Title, index.GET's Rows) — the only money
+// formatting a generated template ever sees there; a template never
+// does money math itself. The sign, if any, is written once up front
+// against the absolute value: cents/100 and cents%100 both truncate
+// toward zero in Go, so naively formatting a negative cents value
+// directly (an earlier draft did) mangles it into something like
+// "$-1.-50" instead of "-$1.50". parseCents below never actually
+// hands this function a negative value (v1 rejects negative money
+// outright), but a stored value could in principle be negative from
+// some other path, so the sign is still handled correctly here as
+// defense in depth.
+func formatCents(cents int64) string {
+	sign := ""
+	if cents < 0 {
+		sign = "-"
+		cents = -cents
+	}
+	return fmt.Sprintf("%s$%d.%02d", sign, cents/100, cents%100)
+}
+
+// formatCentsPlain renders cents exactly like formatCents but without
+// the leading "$" — the formatter edit.GET (and the OTHER field
+// group's current values on a validation-failure re-render) must use
+// to seed a form field a browser might resubmit completely unchanged:
+// the seed has to be exactly what parseCents itself accepts back in,
+// and parseCents rejects a leading "$" (see its own doc). Using
+// formatCents there instead (an earlier draft did) meant resubmitting
+// an untouched Money field always 400ed.
+func formatCentsPlain(cents int64) string {
+	sign := ""
+	if cents < 0 {
+		sign = "-"
+		cents = -cents
+	}
+	return fmt.Sprintf("%s%d.%02d", sign, cents/100, cents%100)
+}
+
+// parseCents parses a decimal-dollars string (e.g. "12.34") into
+// cents, rejecting more than two decimal places. An empty string
+// parses to zero cents, not an error — a Required Money field rejects
+// blankness on the raw text before this runs. v1 also has no use for
+// negative prices, so any sign character is rejected outright as a
+// field error rather than accepted and applied: the whole and
+// fractional parts must each be composed entirely of ASCII digits.
+// This is stricter than handing each half to strconv.ParseInt
+// directly (an earlier draft did),
+// which happily accepts its own leading "+"/"-" in either half — so
+// "12.-5" or "12.+5" would silently mis-parse into a different
+// magnitude than the digits alone suggest, rather than being rejected
+// as the not-a-dollar-amount that it is.
+func parseCents(s string) (int64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, nil
+	}
+	whole, frac, hasFrac := strings.Cut(s, ".")
+	if hasFrac && len(frac) > 2 {
+		return 0, fmt.Errorf("enter a dollar amount with at most 2 decimal places")
+	}
+	for len(frac) < 2 {
+		frac += "0"
+	}
+	if whole == "" {
+		whole = "0"
+	}
+	if !isDigits(whole) || !isDigits(frac) {
+		return 0, fmt.Errorf("enter a valid dollar amount")
+	}
+	wholeN, err := strconv.ParseInt(whole, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("enter a valid dollar amount")
+	}
+	fracN, err := strconv.ParseInt(frac, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("enter a valid dollar amount")
+	}
+	return wholeN*100 + fracN, nil
+}
+
+// isDigits reports whether s is non-empty and every byte is an ASCII
+// digit — parseCents' guard against a sign character ("-"/"+")
+// slipping through either half via strconv.ParseInt's own leniency.
+func isDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+`
+
+// TestEmitActionsFilteredEditBasicsPOSTGolden pins EmitActions'
+// edit-basics.POST output for filteredFixtureResource() against
+// goldenFilteredEditBasicsPOSTGo — the Required counterpart to
+// TestEmitActionsGoldenFiles' goldenEditBasicsPOSTGo, which stays pinned
+// against fixtureResource() (no Required field in its Basics group)
+// completely unchanged by this task: that is this task's byte-identical
+// regression gate for a resource with no Required fields.
+func TestEmitActionsFilteredEditBasicsPOSTGolden(t *testing.T) {
+	appRoot := newActionsAppRoot(t)
+	genDir := t.TempDir()
+	r := filteredFixtureResource()
+
+	if _, _, err := EmitActions(appRoot, genDir, r); err != nil {
+		t.Fatalf("EmitActions: %v", err)
+	}
+
+	path := filepath.Join(genDir, "actions", "admin", "events", "id", "edit_basics_post", "edit-basics.POST.go")
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	if string(got) != goldenFilteredEditBasicsPOSTGo {
+		t.Errorf("%s:\ngot:\n%s\nwant:\n%s", path, got, goldenFilteredEditBasicsPOSTGo)
+	}
+}
 
 func TestEmitActionsGoldenFiles(t *testing.T) {
 	appRoot := newActionsAppRoot(t)
@@ -1570,5 +2415,313 @@ func TestParseCentsAndFormatCentsPlainRoundTrip(t *testing.T) {
 	t.Logf("go test %s output:\n%s", relPkgDir, out)
 	if err != nil {
 		t.Fatalf("go test in generated package failed: %v\n%s", err, out)
+	}
+}
+
+// ── Required: real-execution coverage ───────────────────────────────
+
+// requiredFixtureResource is a real-execution-only fixture (not used
+// for golden-pinning — filteredFixtureResource's Title:Required already
+// pins the shape of the emitted check block, see
+// goldenFilteredIndexPOSTGo/goldenFilteredEditBasicsPOSTGo above): Title
+// (Text, Required) AND Price (Money, Required) together, in one
+// resource, so TestRequiredValidation can exercise every case the brief
+// calls out — blank Text, blank Money, "0" Money (accepted), a
+// present-but-invalid Money value (the parse error, never the required
+// one) — against REAL generated code over real HTTP requests, without
+// perturbing filteredFixtureResource() itself (Task 3's fixture, shared
+// across tasks and pinned by its own goldens).
+func requiredFixtureResource() rastrillo.Resource {
+	r := rastrillo.Resource{
+		Name:  "invoices",
+		Route: "/admin/invoices",
+		Store: rastrillo.Exclusive,
+		List: rastrillo.List{
+			Columns: []rastrillo.Column{{Field: "Title"}, {Field: "Price", Kind: rastrillo.Money}},
+		},
+		Form: rastrillo.Form{
+			Basics: []rastrillo.Field{
+				{Name: "Title", Required: true},
+				{Name: "Price", Kind: rastrillo.Money, Required: true},
+			},
+		},
+	}
+	if err := r.Validate(); err != nil {
+		panic(err)
+	}
+	return r
+}
+
+// stubInvoicesStore is the minimal store TestRequiredValidation's real
+// HTTP requests need: CreateInvoice (index.POST's happy path),
+// GetInvoice (edit-basics.POST's Get-or-404), UpdateInvoiceBasics
+// (edit-basics.POST's happy path) — the only three store calls either
+// Handle makes; this test never exercises index.GET, so no List/Count
+// method is needed.
+const stubInvoicesStore = `package invoicesstore
+
+import "context"
+
+type DBTX interface{}
+
+func New(db DBTX) *Queries { return &Queries{db: db} }
+
+type Queries struct{ db DBTX }
+
+type Invoice struct {
+	ID        int64
+	Title     string
+	Price     int64
+	CreatedAt string
+	UpdatedAt string
+}
+
+type CreateInvoiceParams struct {
+	Title string
+	Price int64
+	Now   string
+}
+
+func (q *Queries) CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (int64, error) {
+	return 1, nil
+}
+
+func (q *Queries) GetInvoice(ctx context.Context, id int64) (Invoice, error) {
+	return Invoice{ID: id, Title: "Existing Invoice", Price: 500}, nil
+}
+
+type UpdateInvoiceBasicsParams struct {
+	Title string
+	Price int64
+	Now   string
+	ID    int64
+}
+
+func (q *Queries) UpdateInvoiceBasics(ctx context.Context, arg UpdateInvoiceBasicsParams) error {
+	return nil
+}
+`
+
+// TestRequiredValidation drops httptest-driven _test.go files into
+// EmitActions' REAL generated index.POST and edit-basics.POST packages
+// for requiredFixtureResource() and runs them with `go test`
+// (TestMoneyHelpersRoundTrip's pattern above: a real generated package,
+// not a hand-copied stand-in that could drift). It covers every case
+// the brief calls out: blank Title -> 400 containing "required"; blank
+// Price (raw "") -> 400 containing "required"; "0" Price -> accepted
+// (the real store call happens, the stub returns success); a
+// present-but-invalid Price -> the parse error, never the required one.
+// The emitted check block's exact SHAPE is separately golden-pinned
+// (goldenFilteredIndexPOSTGo/goldenFilteredEditBasicsPOSTGo, above,
+// against filteredFixtureResource()'s Title-only/Text-only case) — this
+// test is the real-execution half the brief asks for alongside that
+// pin, run at the action level rather than a full HTTP-server/DB round
+// trip (Task 6's tickets suite is where that fuller level lives).
+func TestRequiredValidation(t *testing.T) {
+	appRoot := newScratchModule(t, false)
+	genDir := filepath.Join(appRoot, "gen")
+	r := requiredFixtureResource()
+
+	written, _, err := EmitActions(appRoot, genDir, r)
+	if err != nil {
+		t.Fatalf("EmitActions: %v", err)
+	}
+
+	dirFor := func(marker string) string {
+		for _, w := range written {
+			if strings.Contains(w, marker) {
+				return filepath.Dir(w)
+			}
+		}
+		t.Fatalf("no %s file among written: %v", marker, written)
+		return ""
+	}
+	createDir := dirFor("index_post")
+	editBasicsDir := dirFor("edit_basics_post")
+
+	pkgOf := func(dir, base string) string {
+		src, err := os.ReadFile(filepath.Join(dir, base))
+		if err != nil {
+			t.Fatalf("read %s: %v", base, err)
+		}
+		m := regexp.MustCompile(`(?m)^package (\S+)`).FindSubmatch(src)
+		if m == nil {
+			t.Fatalf("no package clause found in %s", base)
+		}
+		return string(m[1])
+	}
+	createPkg := pkgOf(createDir, "index.POST.go")
+	editPkg := pkgOf(editBasicsDir, "edit-basics.POST.go")
+
+	storeDir := filepath.Join(genDir, "store", "invoices")
+	if err := os.MkdirAll(storeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storeDir, "store.go"), []byte(stubInvoicesStore), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	createTestSrc := `package ` + createPkg + `
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/carlosframework/rastrillo"
+)
+
+func doCreate(t *testing.T, form url.Values) (*httptest.ResponseRecorder, formView) {
+	t.Helper()
+	var captured formView
+	ctx := &rastrillo.Ctx{
+		Render: func(ctx *rastrillo.Ctx, w http.ResponseWriter, page string, status int, data any) {
+			captured, _ = data.(formView)
+			w.WriteHeader(status)
+		},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/invoices", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	Handle(ctx, w, req)
+	return w, captured
+}
+
+func TestCreateBlankTitleIs400Required(t *testing.T) {
+	w, fv := doCreate(t, url.Values{"Title": {""}, "Price": {"5.00"}})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if !strings.Contains(fv.Errors["Title"], "required") {
+		t.Errorf("Errors[Title] = %q, want it to contain \"required\"", fv.Errors["Title"])
+	}
+}
+
+func TestCreateBlankPriceIs400Required(t *testing.T) {
+	w, fv := doCreate(t, url.Values{"Title": {"A title"}, "Price": {""}})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if !strings.Contains(fv.Errors["Price"], "required") {
+		t.Errorf("Errors[Price] = %q, want it to contain \"required\"", fv.Errors["Price"])
+	}
+}
+
+func TestCreateZeroPriceIsAccepted(t *testing.T) {
+	w, _ := doCreate(t, url.Values{"Title": {"A title"}, "Price": {"0"}})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (\"0\" is a valid required Money value)", w.Code)
+	}
+}
+
+func TestCreateInvalidPriceIsParseErrorNotRequired(t *testing.T) {
+	w, fv := doCreate(t, url.Values{"Title": {"A title"}, "Price": {"not-a-number"}})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if strings.Contains(fv.Errors["Price"], "required") {
+		t.Errorf("Errors[Price] = %q, want the parse error, not the required one", fv.Errors["Price"])
+	}
+	if fv.Errors["Price"] == "" {
+		t.Errorf("Errors[Price] is empty, want a parse-error message")
+	}
+}
+`
+	if err := os.WriteFile(filepath.Join(createDir, "required_test.go"), []byte(createTestSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	editTestSrc := `package ` + editPkg + `
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+
+	"github.com/carlosframework/rastrillo"
+)
+
+func doEditBasics(t *testing.T, form url.Values) (*httptest.ResponseRecorder, formView) {
+	t.Helper()
+	var captured formView
+	ctx := &rastrillo.Ctx{
+		Render: func(ctx *rastrillo.Ctx, w http.ResponseWriter, page string, status int, data any) {
+			captured, _ = data.(formView)
+			w.WriteHeader(status)
+		},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/invoices/1/edit-basics", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetPathValue("id", "1")
+	w := httptest.NewRecorder()
+	Handle(ctx, w, req)
+	return w, captured
+}
+
+func TestEditBasicsBlankTitleIs400Required(t *testing.T) {
+	w, fv := doEditBasics(t, url.Values{"Title": {"   "}, "Price": {"5.00"}})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if !strings.Contains(fv.Errors["Title"], "required") {
+		t.Errorf("Errors[Title] = %q, want it to contain \"required\"", fv.Errors["Title"])
+	}
+}
+
+func TestEditBasicsBlankPriceIs400Required(t *testing.T) {
+	w, fv := doEditBasics(t, url.Values{"Title": {"A title"}, "Price": {""}})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if !strings.Contains(fv.Errors["Price"], "required") {
+		t.Errorf("Errors[Price] = %q, want it to contain \"required\"", fv.Errors["Price"])
+	}
+}
+
+func TestEditBasicsZeroPriceIsAccepted(t *testing.T) {
+	w, _ := doEditBasics(t, url.Values{"Title": {"A title"}, "Price": {"0"}})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (\"0\" is a valid required Money value)", w.Code)
+	}
+}
+
+func TestEditBasicsInvalidPriceIsParseErrorNotRequired(t *testing.T) {
+	w, fv := doEditBasics(t, url.Values{"Title": {"A title"}, "Price": {"12.345"}})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if strings.Contains(fv.Errors["Price"], "required") {
+		t.Errorf("Errors[Price] = %q, want the parse error, not the required one", fv.Errors["Price"])
+	}
+	if fv.Errors["Price"] == "" {
+		t.Errorf("Errors[Price] is empty, want a parse-error message")
+	}
+}
+`
+	if err := os.WriteFile(filepath.Join(editBasicsDir, "required_test.go"), []byte(editTestSrc), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	relCreate, err := filepath.Rel(appRoot, createDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relEdit, err := filepath.Rel(appRoot, editBasicsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("go", "test",
+		"./"+filepath.ToSlash(relCreate)+"/...",
+		"./"+filepath.ToSlash(relEdit)+"/...",
+	)
+	cmd.Dir = appRoot
+	out, err := cmd.CombinedOutput()
+	t.Logf("go test output:\n%s", out)
+	if err != nil {
+		t.Fatalf("go test in generated packages failed: %v\n%s", err, out)
 	}
 }

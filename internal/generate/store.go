@@ -241,10 +241,32 @@ func searchColumns(r rastrillo.Resource) []column {
 	return cols
 }
 
+// filterFields returns r's filter field names as an ordered union of bare
+// Filter and Filters[].Field, in first-mention order with no duplicates.
+func filterFields(r rastrillo.Resource) []string {
+	var fields []string
+	seen := map[string]bool{}
+	add := func(name string) {
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		fields = append(fields, name)
+	}
+	for _, f := range r.List.Filter {
+		add(f)
+	}
+	for _, flt := range r.List.Filters {
+		add(flt.Field)
+	}
+	return fields
+}
+
 // whereClauses builds the optional-filter WHERE conditions shared by
 // ListNotes and CountNotes: one clause for the search box (if List.Search
 // is set and there is at least one eligible column) and one
-// equality clause per List.Filter entry. Each condition is written so
+// equality clause per filter field (from filterFields, the union of
+// bare Filter and Filters[].Field). Each condition is written so
 // an empty sqlc.arg() disables it — the caller decides whether to run
 // the query with or without a value, sqlc gives it exactly one query to
 // call either way.
@@ -269,7 +291,7 @@ func whereClauses(r rastrillo.Resource) []string {
 		}
 	}
 
-	for _, f := range r.List.Filter {
+	for _, f := range filterFields(r) {
 		sql := sqlName(f)
 		clauses = append(clauses, fmt.Sprintf(
 			"(sqlc.arg(filter_%s) = '' OR %s = sqlc.arg(filter_%s))", sql, sql, sql))

@@ -86,25 +86,31 @@ func TestCreateRedirectsToTheNewPostsShowPage(t *testing.T) {
 	wantContains(t, list.Body.String(), "First post")
 }
 
-// Retires TestCreateWithAnEmptyTitleIs400AndCreatesNothing: the
-// generated create action has no field named as required, so an empty
-// title is accepted like any other value, not rejected. See this
-// file's own doc comment.
-func TestCreateWithAnEmptyTitleSucceedsNoServerSideValidation(t *testing.T) {
+// Re-establishes TestCreateWithAnEmptyTitleIs400AndCreatesNothing: now
+// that the manifest declares Title as required, the generated create action
+// validates it server-side and returns 400 with a field error.
+func TestCreateWithAnEmptyTitleIs400AgainstGeneratedValidation(t *testing.T) {
 	app, db := newApp(t)
 
 	rec := post(t, app, "/admin/posts", url.Values{
 		"Title": {"   "},
 		"Body":  {"Body the writer typed."},
 	})
-	wantStatus(t, rec, http.StatusSeeOther)
+	wantStatus(t, rec, http.StatusBadRequest)
+	body := rec.Body.String()
+
+	// The error message contains "required" as specified in the manifest field validation
+	wantContains(t, body, "required")
+	// The submitted body is still in the field: a failed submission never
+	// costs the writer what they typed.
+	wantContains(t, body, "Body the writer typed.")
 
 	n, err := blog.Count(db, "", "")
 	if err != nil {
 		t.Fatalf("count: %v", err)
 	}
-	if n != 1 {
-		t.Errorf("created %d posts, want 1: v1's generated create has no required-field validation", n)
+	if n != 0 {
+		t.Errorf("created %d posts, want 0", n)
 	}
 }
 
@@ -259,12 +265,10 @@ func TestUpdateChangesTheFieldsAndRedirectsBack(t *testing.T) {
 	}
 }
 
-// Retires TestUpdateWithAnEmptyTitleIs400AndChangesNothing: the
-// generated edit-basics action's Basics group has no Money field, so
-// generation time already knows no parse can fail and emits no
-// validation branch at all (actions.go's updatePOST) — an empty title
-// is written through like any other value.
-func TestUpdateWithAnEmptyTitleSucceedsNoServerSideValidation(t *testing.T) {
+// Re-establishes TestUpdateWithAnEmptyTitleIs400AndChangesNothing: now
+// that the manifest declares Title as required, the generated edit-basics
+// action validates it server-side and returns 400 with a field error.
+func TestUpdateWithAnEmptyTitleIs400AgainstGeneratedValidation(t *testing.T) {
 	app, db := newApp(t)
 	id := seed(t, db, "Before", "Old body.", false)
 
@@ -272,13 +276,19 @@ func TestUpdateWithAnEmptyTitleSucceedsNoServerSideValidation(t *testing.T) {
 		"Title": {""},
 		"Body":  {"New body."},
 	})
-	wantStatus(t, rec, http.StatusSeeOther)
+	wantStatus(t, rec, http.StatusBadRequest)
+	body := rec.Body.String()
+
+	// The error message contains "required" as specified in the manifest field validation
+	wantContains(t, body, "required")
+	// The re-render is the edit screen
+	wantContains(t, body, "New body.")
 
 	after, err := blog.Get(db, id)
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if after.Title != "" || after.Body != "New body." {
-		t.Errorf("post = %q/%q, want empty title/New body.: v1's generated update has no required-field validation", after.Title, after.Body)
+	if after.Title != "Before" || after.Body != "Old body." {
+		t.Errorf("post changed: %q/%q", after.Title, after.Body)
 	}
 }

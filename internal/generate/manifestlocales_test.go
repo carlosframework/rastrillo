@@ -52,44 +52,82 @@ func TestTitleCase(t *testing.T) {
 // by hand against templates.go (see manifestlocales.go's own doc
 // comment for the derivation) rather than trusted by construction,
 // since a drift here is exactly the kind of thing a missing-key bug in
-// production would come from.
+// production would come from. The "declared filter" case covers
+// filteredFixtureResource() ("events", Status: draft/live) — every
+// SummaryKey/LabelKey the generated index.GET action can pass to
+// list.html's (T .Filter.SummaryKey)/(T .LabelKey) calls
+// (filter<Field>LabelKey in actions.go: "ui.all" for "", else
+// resource.<name>.filter.<sql>.<value>) must be covered here too.
 func TestEmitLocalesKeySetMatchesTemplates(t *testing.T) {
-	dir := t.TempDir()
-	r := fixtureResource() // notes: List Title/Price, Basics Title/Body, Advanced Price
-	if err := EmitLocales(dir, "en", []rastrillo.Resource{r}); err != nil {
-		t.Fatalf("EmitLocales: %v", err)
+	cases := []struct {
+		name string
+		r    rastrillo.Resource
+		want []string
+	}{
+		{
+			name: "no declared filter",
+			r:    fixtureResource(), // notes: List Title/Price, Basics Title/Body, Advanced Price
+			want: []string{
+				"resource.notes.empty.body",
+				"resource.notes.empty.title",
+				"resource.notes.field.body",
+				"resource.notes.field.price",
+				"resource.notes.field.title",
+				"resource.notes.name",
+				"ui.cancel",
+				"ui.edit",
+				"ui.new",
+				"ui.save",
+				"ui.search",
+			},
+		},
+		{
+			name: "declared filter",
+			r:    filteredFixtureResource(), // events: List Title/Status, Filters Status(draft,live)
+			want: []string{
+				"resource.events.empty.body",
+				"resource.events.empty.title",
+				"resource.events.field.status",
+				"resource.events.field.title",
+				"resource.events.filter.status.draft",
+				"resource.events.filter.status.live",
+				"resource.events.name",
+				"ui.all",
+				"ui.cancel",
+				"ui.edit",
+				"ui.new",
+				"ui.save",
+				"ui.search",
+			},
+		},
 	}
 
-	data, err := os.ReadFile(filepath.Join(dir, "locales", "en.toml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, err := catalog.Decode(data)
-	if err != nil {
-		t.Fatalf("decode emitted catalog: %v", err)
-	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := EmitLocales(dir, "en", []rastrillo.Resource{tc.r}); err != nil {
+				t.Fatalf("EmitLocales: %v", err)
+			}
 
-	var got []string
-	for k := range m {
-		got = append(got, k)
-	}
-	sort.Strings(got)
+			data, err := os.ReadFile(filepath.Join(dir, "locales", "en.toml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			m, err := catalog.Decode(data)
+			if err != nil {
+				t.Fatalf("decode emitted catalog: %v", err)
+			}
 
-	want := []string{
-		"resource.notes.empty.body",
-		"resource.notes.empty.title",
-		"resource.notes.field.body",
-		"resource.notes.field.price",
-		"resource.notes.field.title",
-		"resource.notes.name",
-		"ui.cancel",
-		"ui.edit",
-		"ui.new",
-		"ui.save",
-		"ui.search",
-	}
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Errorf("key set = %v,\nwant     %v", got, want)
+			var got []string
+			for k := range m {
+				got = append(got, k)
+			}
+			sort.Strings(got)
+
+			if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Errorf("key set = %v,\nwant     %v", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -120,6 +158,54 @@ func TestEmitLocalesUIKeyValues(t *testing.T) {
 	}
 	if len(m) != len(want) {
 		t.Errorf("with no resources declared, only the ui.* keys should be emitted: got %v", m)
+	}
+}
+
+// onSaleFilterFixture exercises titleCase's multi-hump case on a
+// declared filter VALUE, not just a field name: "on_sale" -> "On sale"
+// (the binding contract's own pinned example) — filteredFixtureResource's
+// own values ("draft", "live") are single words, which would not catch
+// a regression on a multi-word value's fallback.
+func onSaleFilterFixture() rastrillo.Resource {
+	r := rastrillo.Resource{
+		Name:  "products",
+		Route: "/admin/products",
+		List: rastrillo.List{
+			Columns: []rastrillo.Column{{Field: "Title"}, {Field: "Status"}},
+			Filter:  []string{"Status"},
+			Filters: []rastrillo.Filter{{Field: "Status", Values: []string{"on_sale", "sold_out"}}},
+		},
+		Form: rastrillo.Form{
+			Basics: []rastrillo.Field{{Name: "Title"}, {Name: "Status"}},
+		},
+	}
+	if err := r.Validate(); err != nil {
+		panic(err)
+	}
+	return r
+}
+
+func TestEmitLocalesTitleCasesMultiWordFilterValues(t *testing.T) {
+	dir := t.TempDir()
+	if err := EmitLocales(dir, "en", []rastrillo.Resource{onSaleFilterFixture()}); err != nil {
+		t.Fatalf("EmitLocales: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "locales", "en.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := catalog.Decode(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := m["resource.products.filter.status.on_sale"], "On sale"; got != want {
+		t.Errorf("filter value label = %q, want %q", got, want)
+	}
+	if got, want := m["resource.products.filter.status.sold_out"], "Sold out"; got != want {
+		t.Errorf("filter value label = %q, want %q", got, want)
+	}
+	if got, want := m["ui.all"], "All"; got != want {
+		t.Errorf(`m["ui.all"] = %q, want %q`, got, want)
 	}
 }
 

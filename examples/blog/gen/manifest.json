@@ -11,17 +11,20 @@
         }
       ],
       "search": true,
-      "filter": null
+      "filter": null,
+      "filters": null
     },
     "form": {
       "basics": [
         {
           "name": "Title",
-          "kind": "text"
+          "kind": "text",
+          "required": true
         },
         {
           "name": "Body",
-          "kind": "textarea"
+          "kind": "textarea",
+          "required": false
         }
       ],
       "advanced": null

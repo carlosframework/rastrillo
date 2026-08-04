@@ -28,7 +28,7 @@ func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	store := postsstore.New(ctx.DB)
-	_, err := store.GetPost(r.Context(), id)
+	n, err := store.GetPost(r.Context(), id)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return
@@ -41,6 +41,27 @@ func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
 	vTitle := strings.TrimSpace(r.PostFormValue("Title"))
 	vBody := r.PostFormValue("Body")
 
+	errs := map[string]string{}
+	if vTitle == "" {
+		errs["Title"] = "Title is required"
+	}
+
+	if len(errs) > 0 {
+		fields := map[string]string{
+			"Title": n.Title,
+			"Body":  n.Body,
+		}
+		fields["Title"] = vTitle
+		fields["Body"] = vBody
+		render(ctx, w, "posts/form", http.StatusBadRequest, formView{
+			IsNew:        false,
+			Fields:       fields,
+			Errors:       errs,
+			BasicsAction: fmt.Sprintf("/admin/posts/%d/edit-basics", id),
+		})
+		return
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	if err := store.UpdatePostBasics(r.Context(), postsstore.UpdatePostBasicsParams{
 		Title: vTitle,
@@ -52,6 +73,14 @@ func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/admin/posts/%d", id), http.StatusSeeOther)
+}
+
+type formView struct {
+	IsNew          bool
+	Fields         map[string]string
+	Errors         map[string]string
+	BasicsAction   string
+	AdvancedAction string
 }
 
 // fail logs through Ctx.Logger (when set) and answers a plain 500.
@@ -126,12 +155,13 @@ func formatCentsPlain(cents int64) string {
 
 // parseCents parses a decimal-dollars string (e.g. "12.34") into
 // cents, rejecting more than two decimal places. An empty string
-// parses to zero cents, not an error — v1 has no server-side
-// required-field validation. v1 also has no use for negative prices,
-// so any sign character is rejected outright as a field error rather
-// than accepted and applied: the whole and fractional parts must each
-// be composed entirely of ASCII digits. This is stricter than handing
-// each half to strconv.ParseInt directly (an earlier draft did),
+// parses to zero cents, not an error — a Required Money field rejects
+// blankness on the raw text before this runs. v1 also has no use for
+// negative prices, so any sign character is rejected outright as a
+// field error rather than accepted and applied: the whole and
+// fractional parts must each be composed entirely of ASCII digits.
+// This is stricter than handing each half to strconv.ParseInt
+// directly (an earlier draft did),
 // which happily accepts its own leading "+"/"-" in either half — so
 // "12.-5" or "12.+5" would silently mis-parse into a different
 // magnitude than the digits alone suggest, rather than being rejected

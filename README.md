@@ -97,6 +97,9 @@ rather than to cover the full design. **Built:**
   partials, no JavaScript, and (new on this branch) a manifest-declared
   resource adopted alongside hand-written actions and ejected
   templates — see [`examples/blog/README.md`](examples/blog/README.md).
+- **`examples/tickets`** — the fully generated proof: one manifest
+  resource, zero hand actions, zero ejected templates — see
+  [`examples/tickets/README.md`](examples/tickets/README.md).
 
 **Not built yet** — all designed in the spec above, none of it faked or
 stubbed here: the `Mergeable` event-sourced store shape, blobs, the
@@ -132,11 +135,15 @@ route = "/admin/posts"
 store = "exclusive"
 
 [list]
-columns = [{ field = "Title" }]
+columns = [{ field = "Title" }, { field = "Status" }]
 search  = true
 
+[[list.filters]]
+field  = "Status"
+values = ["draft", "published"]
+
 [form]
-basics = [{ name = "Title" }, { name = "Body", kind = "textarea" }]
+basics = [{ name = "Title", required = true }, { name = "Body", kind = "textarea" }]
 ```
 
 (or build the same `rastrillo.Resource` value in `manifest/*.go` — a
@@ -165,10 +172,14 @@ produces, per resource:
 - **Templates** — `gen/templates/<name>/{list,show,form}.html`,
   composed entirely from the `ui` package's partials. `list.html` is
   gated on `search` at generation time: a resource with `search =
-  false` gets no search box at all, and there is **no filter control in
-  v1** — a manifest's `filter` list validates (every entry must name a
-  declared column) but a dropdown needs enumerable values the manifest
-  doesn't declare, so nothing renders one yet.
+  false` gets no search box at all. A `[[list.filters]]` entry declares
+  a filterable field and a set of enumerable values (e.g.
+  `field = "Status"` with `values = ["draft", "published"]`): the
+  generated list renders a dropdown control that filters by value and
+  composes with search and pagination. Each filter value becomes a
+  translation key `resource.<name>.filter.<field>.<value>`, plus
+  `ui.all` for the all-items state. The bare `filter` field (superseded)
+  validates but generates no control.
 - **Locale keys** — `gen/locales/<default>.toml` (for humans/
   translators) and `gen/locales/locales.go` (a generated `BaseCatalog`
   var, wired as `Options.BaseCatalog`) carry a title-cased fallback
@@ -195,11 +206,46 @@ scratch directory and diffs it against the committed `gen/`, catching
 both a stale/hand-edited generated file (idempotency) and a collision,
 without writing anything.
 
-v1 has no server-side required-field validation (an empty `Money`
-field parses to zero cents, never an error) and generates no delete
-action; `store = "mergeable"` isn't built yet either (`Validate`
-rejects it by name). `examples/blog` shows what an app adds by hand to
-cover what a manifest doesn't generate.
+**Filters** — at most one `[[list.filters]]` entry per resource. Field
+values are validated at generation time (must name a declared list
+column); each declared value must be non-empty, match `^[a-z0-9_-]+$`,
+and appear only once — they travel in URLs and double as translation
+keys, so they can't be arbitrary text. A filter's selection persists
+across search and pagination (carried in the generated hrefs); the
+dropdown's own open/closed `<details>` state does not survive
+navigation.
+
+**Required fields** — `required = true` on a form field marker adds a
+client-side `required` attribute via the field partial AND generates
+server-side validation: a blank submission re-renders the form with a
+400 status and the field's own error message (e.g. "Title is required").
+A `Money` field marked `required = true` still accepts `"0"` as valid —
+the field must be present and parseable, not necessarily non-zero.
+
+**Manifest-only apps** — a resource need not coexist with hand actions.
+An app with *only* declared resources (and no `actions/` or
+`templates/` directory at all) is legal: `rastrillo generate` produces
+the whole store, all seven actions, and every template, compiled
+normally, and the app runs without any hand-written route or screen
+handlers.
+
+**Migrations** — the generated `migrations.go` emits `CREATE TABLE IF
+NOT EXISTS`. A fresh database runs the generated migration and works
+out of the box. An existing database that predates a manifest field
+addition needs an app-owned additive migration (e.g. `ALTER TABLE posts
+ADD COLUMN status TEXT`): manifest edits regenerate code and
+migrations, but the generated migration stays idempotent
+(`IF NOT EXISTS`) — schema evolution is the app's own work (roadmap:
+automatic manifest-diff ALTER emission). `examples/blog` shows the
+pattern: the generated `CREATE TABLE IF NOT EXISTS posts` runs first,
+then the app's own `ALTER TABLE posts ADD COLUMN published BOOLEAN`
+runs after.
+
+Generates no delete action; `store = "mergeable"` isn't built yet
+either (`Validate` rejects it by name). `examples/blog` shows what an
+app adds by hand to cover what a manifest doesn't generate;
+`examples/tickets` is the fully generated proof (one manifest resource,
+no hand actions or templates).
 
 ## Try it
 
