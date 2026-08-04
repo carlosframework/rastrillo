@@ -153,9 +153,8 @@ func Serve(opts Options) error {
 
 	handler, err := buildHandler(opts)
 	if err != nil {
-		// buildHandler's only error source is NewLocales, whose errors
-		// already carry the "rastrillo:" prefix — wrapping again here
-		// would read "rastrillo: rastrillo: ...".
+		// buildHandler's error sources (NewLocales, the Wrap nil-handler
+		// check) already carry the rastrillo: prefix, so no re-wrap here.
 		return err
 	}
 
@@ -188,7 +187,7 @@ func Serve(opts Options) error {
 }
 
 // buildHandler assembles the serving handler: the framework's own
-// endpoints, the app mux — wrapped by Options.Wrap when set —, and
+// endpoints, the app mux (wrapped by Options.Wrap when set), and
 // — when Options.Locales is set — the locale middleware wrapped around
 // the whole thing, so a locale prefix strips before routing and the
 // translator rides the request context (§10). Split from Serve so the
