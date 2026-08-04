@@ -46,6 +46,16 @@ var uiKeys = map[string]string{
 // same set show.html/form.html label) — plus the five shared `ui.*`
 // keys above, emitted once regardless of how many resources there are.
 //
+// A resource with a declared List.Filters entry (declaredFilter) adds
+// `resource.<r.Name>.filter.<sqlName(field)>.<value>` per declared
+// value — the LabelKey/SummaryKey actions.go's filterHelperFuncs emits
+// (filter<Field>LabelKey) can resolve a non-empty filter value to — plus
+// the shared `ui.all`, which the same function returns for the "" (all)
+// value. `.field.<sqlName(field)>` for the filtered field itself is
+// already covered by the columns(r) loop above (it's also a List column
+// or Form field, per Validate — see actions.go's filterViewStmts
+// AriaField); this block never emits it a second time.
+//
 // Values are a title-cased fallback derived from the declared
 // identifier (titleCase: "MaxPerOrder" -> "Max per order", "notes" ->
 // "Notes") — a reasonable default a translator or app author edits,
@@ -88,7 +98,12 @@ func EmitLocales(genDir, defaultLocale string, rs []rastrillo.Resource) error {
 // resource.<name>.{name,empty.title,empty.body,field.<sql>} keys —
 // exactly the set templates.go's (T "...") calls reference for that
 // resource (resourceKey and columns are templates.go's/store.go's own
-// helpers, reused here so the key shape cannot drift from theirs).
+// helpers, reused here so the key shape cannot drift from theirs) —
+// plus, for a resource with a declared List.Filters entry
+// (declaredFilter, actions.go's own helper), one
+// resource.<name>.filter.<sql>.<value> key per declared value and the
+// shared ui.all, added only then so a resource set with no declared
+// filter still emits exactly the five ui.* keys (TestEmitLocalesUIKeyValues).
 func localeMap(rs []rastrillo.Resource) map[string]string {
 	m := make(map[string]string, len(uiKeys))
 	for k, v := range uiKeys {
@@ -101,6 +116,13 @@ func localeMap(rs []rastrillo.Resource) map[string]string {
 		m[resourceKey(r.Name, "empty.body")] = "Get started by creating your first one."
 		for _, c := range columns(r) {
 			m[resourceKey(r.Name, "field."+c.SQL)] = titleCase(c.Name)
+		}
+		if field, values, ok := declaredFilter(r); ok {
+			m["ui.all"] = "All"
+			prefix := resourceKey(r.Name, "filter."+sqlName(field))
+			for _, v := range values {
+				m[prefix+"."+v] = titleCase(v)
+			}
 		}
 	}
 	return m

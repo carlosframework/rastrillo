@@ -300,6 +300,84 @@ func TestGenerateKeepsAHandActionAtTheExactGeneratedPath(t *testing.T) {
 	}
 }
 
+// TestGenerateSucceedsWithNoActionsDirectory proves Task 5's own
+// contract change: a missing actions/ directory is an empty
+// hand-action set, not a hard error ("no actions/ directory in %s" —
+// the pre-Task-5 behavior every manifest-only app would otherwise hit
+// before GenerateManifests ever runs). No manifest/ directory either
+// here, on purpose: this pins the narrower fix — actions/ itself is
+// optional — without needing sqlc/network at all; the full
+// manifest-only case (a real generated resource with no hand actions)
+// is TestGenerateWiresAManifestOnlyAppIntoTheRouter below.
+func TestGenerateSucceedsWithNoActionsDirectory(t *testing.T) {
+	dir := scaffold(t, map[string]string{
+		"go.mod": "module demo\n\ngo 1.22\n",
+	})
+	if err := runGenerate([]string{dir}); err != nil {
+		t.Fatalf("runGenerate with no actions/ directory at all: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "gen", "router.go")); err != nil {
+		t.Fatalf("expected gen/router.go: %v", err)
+	}
+}
+
+// TestGenerateCheckSucceedsWithNoActionsDirectory is the --check twin
+// of the above: the actions/ directory Stat happens before the --check
+// branch, so both flags must tolerate its absence identically.
+func TestGenerateCheckSucceedsWithNoActionsDirectory(t *testing.T) {
+	dir := scaffold(t, map[string]string{
+		"go.mod": "module demo\n\ngo 1.22\n",
+	})
+	if err := runGenerate([]string{"--check", dir}); err != nil {
+		t.Fatalf("--check with no actions/ directory at all: %v", err)
+	}
+}
+
+// TestGenerateWiresAManifestOnlyAppIntoTheRouter is Task 5's full
+// end-to-end case: manifest/ declares the app's only route and there is
+// no actions/ directory at all (a manifest-only app, design doc §9 —
+// the common shape for an app that has fully adopted the manifest
+// system and hand-writes nothing). Same scaffold as
+// TestGenerateWiresManifestActionsIntoTheRouter minus
+// actions/index.GET.go — proving the router still gets wired from the
+// manifest resource's own generated actions alone.
+func TestGenerateWiresAManifestOnlyAppIntoTheRouter(t *testing.T) {
+	goMod := fmt.Sprintf("module demo\n\ngo 1.25.0\n\ntool github.com/sqlc-dev/sqlc/cmd/sqlc\n\n"+
+		"require github.com/carlosframework/rastrillo v0.0.0\n\n"+
+		"replace github.com/carlosframework/rastrillo => %s\n", repoRoot(t))
+	dir := scaffold(t, map[string]string{
+		"go.mod":              goMod,
+		"manifest/notes.toml": notesManifestTOML,
+	})
+
+	getCmd := exec.Command("go", "get", "-tool", "github.com/sqlc-dev/sqlc/cmd/sqlc")
+	getCmd.Dir = dir
+	if out, err := getCmd.CombinedOutput(); err != nil {
+		t.Skipf("go get -tool sqlc failed (likely a network issue): %v\n%s", err, out)
+	}
+
+	if err := runGenerate([]string{dir}); err != nil {
+		t.Fatalf("runGenerate: %v", err)
+	}
+
+	routerSrc, err := os.ReadFile(filepath.Join(dir, "gen", "router.go"))
+	if err != nil {
+		t.Fatalf("expected gen/router.go: %v", err)
+	}
+	if !strings.Contains(string(routerSrc), `"GET /admin/notes"`) {
+		t.Errorf("router.go should wire the manifest resource's index.GET route, got:\n%s", routerSrc)
+	}
+	if !strings.Contains(string(routerSrc), `"POST /admin/notes"`) {
+		t.Errorf("router.go should wire the manifest resource's index.POST (create) route, got:\n%s", routerSrc)
+	}
+
+	buildCmd := exec.Command("go", "build", "./...")
+	buildCmd.Dir = dir
+	if out, err := buildCmd.CombinedOutput(); err != nil {
+		t.Fatalf("go build ./... after generate: %v\n%s", err, out)
+	}
+}
+
 func TestGenerateWatchesLocalesAndTemplates(t *testing.T) {
 	// A save to a catalog or a template must restart the dev loop, or
 	// the running binary keeps serving the old embedded copy.

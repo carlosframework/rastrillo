@@ -46,14 +46,23 @@ func runGenerate(args []string) error {
 		return err
 	}
 
+	// actions/ is optional: a manifest-only app (design doc §9) may
+	// declare every route through manifest/ and never have an actions/
+	// directory at all. A missing dir means an empty hand-action set —
+	// Discover itself would error walking a nonexistent path, so it's
+	// skipped entirely rather than tolerated inside — everything
+	// downstream (collision/skip machinery, ManifestActions, the router)
+	// already treats "no hand actions" as the ordinary empty case.
 	actionsDir := filepath.Join(dir, "actions")
-	if _, err := os.Stat(actionsDir); os.IsNotExist(err) {
-		return fmt.Errorf("no actions/ directory in %s", dir)
-	}
-
-	actions, collisions, err := generate.Discover(actionsDir)
-	if err != nil {
-		return fmt.Errorf("discover actions: %w", err)
+	var actions []generate.Action
+	var collisions []generate.Collision
+	if _, err := os.Stat(actionsDir); err == nil {
+		actions, collisions, err = generate.Discover(actionsDir)
+		if err != nil {
+			return fmt.Errorf("discover actions: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
 	}
 	if len(collisions) > 0 {
 		fmt.Fprintln(os.Stderr, "rastrillo generate: route collisions —")
@@ -167,6 +176,14 @@ func runGenerate(args []string) error {
 	router, err := generate.Router(module, allActions)
 	if err != nil {
 		return fmt.Errorf("render router.go: %w", err)
+	}
+	// genDir itself is only ever created as a side effect of Rewrite (a
+	// hand action) or GenerateManifests' emitters (a manifest
+	// resource) — an app with neither (no actions/ at all, or an empty
+	// one, and no manifest/) reaches here with gen/ never having been
+	// created.
+	if err := os.MkdirAll(genDir, 0o755); err != nil {
+		return err
 	}
 	if err := os.WriteFile(filepath.Join(genDir, "router.go"), router, 0o644); err != nil {
 		return err
