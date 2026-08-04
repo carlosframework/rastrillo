@@ -97,6 +97,9 @@ rather than to cover the full design. **Built:**
   partials, no JavaScript, and (new on this branch) a manifest-declared
   resource adopted alongside hand-written actions and ejected
   templates — see [`examples/blog/README.md`](examples/blog/README.md).
+- **`examples/tickets`** — the fully generated proof: one manifest
+  resource, zero hand actions, zero ejected templates — see
+  [`examples/tickets/README.md`](examples/tickets/README.md).
 
 **Not built yet** — all designed in the spec above, none of it faked or
 stubbed here: the `Mergeable` event-sourced store shape, blobs, the
