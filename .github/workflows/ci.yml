@@ -14,6 +14,12 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    # The READMEs' documented sweep commands all run with GOFLAGS=-mod=mod;
+    # the tests that build scratch modules (replace => this repo) rely on it
+    # to resolve module data the scratch go.sum doesn't carry. Without it,
+    # -mod=readonly fails every nested go build on a fresh runner.
+    env:
+      GOFLAGS: -mod=mod
     steps:
       - uses: actions/checkout@v4
 
