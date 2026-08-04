@@ -3,16 +3,20 @@
 // edit-basics actions have no server-side required-field validation at
 // all in this v1 (internal/generate/actions.go's package doc: "No
 // server-side required-field validation exists anywhere in this slice
-// — a deliberate v1 rule"), and the generated form has no page-header,
-// status pill, or publish/unpublish/delete controls (those were the
-// hand admin_edit.html template's own markup; the generated form.html
-// doesn't carry them). Two behavioral cases this file used to cover —
-// "empty title is 400" for both create and update, and "the edit
-// screen shows the draft/published pill and its publish/unpublish/
-// delete buttons" — no longer hold and are retired below with notes,
-// per the task-10 report. Publish/unpublish/delete themselves are
-// unaffected (admin_state_test.go): only their old edit-screen buttons
-// are gone, pending Task 11's template ejection.
+// — a deliberate v1 rule"). "empty title is 400" for both create and
+// update no longer holds and stays retired below with its own note,
+// per the task-10 report.
+//
+// The Edit screen's status pill and publish/unpublish/delete controls
+// — task 10 dropped them when the old hand admin_edit.html was
+// deleted, since the generated form.html the manifest replaced it with
+// carries none of that (posts.toml declares no `published` field at
+// all) — are back as of task 11: templates/posts/form.html is now an
+// ejected, app-owned file (generation of it stopped the moment that
+// file appeared under templates/posts/), and genrender.go's
+// formStripData computes the strip's data from the app's own posts
+// table before the template ever executes. See that function's own
+// doc comment for how, and view.go's Render for the one seam it hooks.
 package blogtest
 
 import (
@@ -40,13 +44,19 @@ func TestNewPostFormRenders(t *testing.T) {
 	wantContains(t, body, `<input class="rst-input" id="Title" name="Title" type="text">`)
 	wantContains(t, body, `<textarea class="rst-textarea" id="Body" name="Body">`)
 	wantContains(t, body, `<button class="rst-btn rst-btn--primary" type="submit">Save</button>`)
-	// The generated form has no page-header, status pill, or required
-	// marker — templates.go's formHTML doesn't emit them, and the
-	// manifest declares no required fields. See this file's own doc
-	// comment.
+	wantContains(t, body, `<header class="rst-page-header">`)
+	wantContains(t, body, `<h1>New post</h1>`)
+	// No required marker: the manifest declares no required fields. No
+	// status pill or publish/unpublish/delete controls either — a post
+	// that doesn't exist yet cannot be published, unpublished, deleted
+	// or viewed; templates/posts/form.html (ejected) guards that whole
+	// strip on !IsNew (see genrender.go's formStripData doc comment).
 	wantNotContains(t, body, `class="rst-field__required"`)
 	wantNotContains(t, body, `required>`)
 	wantNotContains(t, body, `class="rst-status"`)
+	wantNotContains(t, body, `/publish"`)
+	wantNotContains(t, body, `/unpublish"`)
+	wantNotContains(t, body, `/delete"`)
 }
 
 func TestCreateRedirectsToTheNewPostsShowPage(t *testing.T) {
@@ -131,6 +141,43 @@ func TestEditShowsCurrentValues(t *testing.T) {
 	wantContains(t, body, `value="Release notes"`)
 	wantContains(t, body, "The body.")
 	wantContains(t, body, fmt.Sprintf(`action="/admin/posts/%d/edit-basics"`, id))
+	wantContains(t, body, `<header class="rst-page-header">`)
+	wantContains(t, body, `<h1>Release notes</h1>`)
+}
+
+// Restores the pill/button half of task 10's retired
+// TestEditShowsCurrentValuesAndTheDraftPill, now that templates/posts/
+// form.html (ejected — task 11) carries the status strip again.
+func TestEditShowsTheDraftPillAndAPublishControl(t *testing.T) {
+	app, db := newApp(t)
+	id := seed(t, db, "Release notes", "The body.", false)
+
+	rec := get(t, app, fmt.Sprintf("/admin/posts/%d/edit", id))
+	wantStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+
+	wantContains(t, body, `<span class="rst-status" data-tone="neutral">Draft</span>`)
+	wantContains(t, body, fmt.Sprintf(`action="/admin/posts/%d/publish"`, id))
+	wantContains(t, body, fmt.Sprintf(`action="/admin/posts/%d/delete"`, id))
+	wantNotContains(t, body, fmt.Sprintf(`action="/admin/posts/%d/unpublish"`, id))
+	wantNotContains(t, body, fmt.Sprintf(`href="/posts/%d"`, id))
+}
+
+// Restores the pill/button half of task 10's retired
+// TestEditShowsThePublishedPillAfterPublishing.
+func TestEditShowsThePublishedPillAndAnUnpublishControl(t *testing.T) {
+	app, db := newApp(t)
+	id := seed(t, db, "Release notes", "The body.", true)
+
+	rec := get(t, app, fmt.Sprintf("/admin/posts/%d/edit", id))
+	wantStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+
+	wantContains(t, body, `<span class="rst-status" data-tone="positive">Published</span>`)
+	wantContains(t, body, fmt.Sprintf(`action="/admin/posts/%d/unpublish"`, id))
+	wantContains(t, body, fmt.Sprintf(`href="/posts/%d"`, id))
+	wantContains(t, body, fmt.Sprintf(`action="/admin/posts/%d/delete"`, id))
+	wantNotContains(t, body, fmt.Sprintf(`action="/admin/posts/%d/publish"`, id))
 }
 
 func TestEditWithAMissingIdIs404(t *testing.T) {

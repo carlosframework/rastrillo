@@ -14,9 +14,11 @@ import (
 // screens, and /?page=2 is a real second page rather than an empty
 // state), plus one draft so the edit screen has a neutral pill to show.
 //
-// The admin new/edit/show targets now render through the manifest
-// system's generated templates (task 10's adoption) rather than the
-// old hand admin_new.html/admin_edit.html.
+// The admin list/new/edit/show targets all render through the
+// manifest system's own template tree now (task 10's adoption):
+// posts/show stays fully generated, posts/list and posts/form are
+// ejected app-owned files (task 11) rather than the old hand
+// admin_list.html/admin_new.html/admin_edit.html.
 func populatedScreens(t *testing.T) map[string]string {
 	t.Helper()
 	app, db := newApp(t)
@@ -46,16 +48,6 @@ func populatedScreens(t *testing.T) map[string]string {
 		out[target] = rec.Body.String()
 	}
 	return out
-}
-
-// isGeneratedFormScreen reports whether name is one of the generated
-// New/Edit form screens — the only screens with no page-header:
-// internal/generate/templates.go's formHTML doesn't emit one (see this
-// package's admin_form_test.go doc comment). The generated Show screen
-// (bare "/admin/posts/{id}") does carry a page-header, so it isn't
-// included here.
-func isGeneratedFormScreen(name string) bool {
-	return strings.HasSuffix(name, "/new") || strings.HasSuffix(name, "/edit")
 }
 
 // emptyScreens renders the two blank states.
@@ -116,7 +108,13 @@ func TestAllStockPartialsAppearAcrossTheApp(t *testing.T) {
 func TestEveryScreenHasAPageHeaderAndATitle(t *testing.T) {
 	titleRe := regexp.MustCompile(`<title>([^<]+)</title>`)
 	for name, html := range allScreens(t) {
-		if !isGeneratedFormScreen(name) && !strings.Contains(html, `<header class="rst-page-header">`) {
+		// Every screen carries a page-header now, generated and
+		// ejected alike: task 11 ejected posts/list and posts/form
+		// (templates/posts/{list,form}.html) and added one to both
+		// the New and Edit screens the (single) ejected form.html
+		// covers — the exclusion this test used to need for them is
+		// gone along with the reason for it.
+		if !strings.Contains(html, `<header class="rst-page-header">`) {
 			t.Errorf("%s has no page header", name)
 		}
 		m := titleRe.FindStringSubmatch(html)

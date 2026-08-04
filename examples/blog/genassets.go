@@ -6,7 +6,8 @@
 // path elements, and internal/blog is not an ancestor of gen/templates
 // (they are siblings under the module root), so only a file rooted
 // here can reach down into gen/templates. internal/blog's render
-// adapter (genrender.go) imports this package for GenTemplatesFS.
+// adapter (view.go/genrender.go) imports this package for
+// GenTemplatesFS and AppTemplatesFS.
 //
 // This file is hand-written, not generated: `rastrillo generate` only
 // ever clears and rewrites gen/actions/ (see cmd/rastrillo/generate.go),
@@ -18,3 +19,13 @@ import "embed"
 
 //go:embed gen/templates
 var GenTemplatesFS embed.FS
+
+// AppTemplatesFS embeds templates/ — the app-root tree a manifest
+// resource's screen lands in once ejected (task 11:
+// templates/posts/list.html, templates/posts/form.html). The same
+// ".." restriction that forces GenTemplatesFS to live here applies
+// equally to an ejected file: it sits beside gen/, not under
+// internal/blog, so internal/blog cannot embed it directly either.
+//
+//go:embed templates
+var AppTemplatesFS embed.FS
