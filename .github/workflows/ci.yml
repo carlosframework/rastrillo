@@ -48,13 +48,26 @@ jobs:
           go vet ./...
           go test ./... -count=1
 
+      # blog and tickets carry a `go tool sqlc` directive; their sweeps
+      # and the generate steps below fetch sqlc via the module proxy on
+      # first run. That network access is load-bearing - don't cache it
+      # away without keeping the module download path working.
+      - name: examples/tickets ./... sweep
+        working-directory: examples/tickets
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./... -count=1
+
       - name: generate --check and gen/ drift
         run: |
           go build -o /tmp/rastrillo ./cmd/rastrillo
           /tmp/rastrillo generate --check examples/helloworld
           /tmp/rastrillo generate --check examples/blog
+          /tmp/rastrillo generate --check examples/tickets
           /tmp/rastrillo generate examples/helloworld
           /tmp/rastrillo generate examples/blog
+          /tmp/rastrillo generate examples/tickets
           # Committed gen/ must match what today's generator writes.
           git diff --exit-code
 
