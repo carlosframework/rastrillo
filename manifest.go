@@ -207,6 +207,30 @@ func (r *Resource) Validate() error {
 		}
 	}
 
+	// Field and column names must also be the canonical spelling sqlc's
+	// own generated Go field name would derive back to (see
+	// isCanonicalIdent's doc for why identPattern alone isn't enough —
+	// "title" and "IPAddress" both match identPattern but neither
+	// round-trips). Checked after the reserved-name pass above so a name
+	// that fails BOTH checks (e.g. "updatedat") still reports as
+	// reserved, matching this function's existing precedence rather than
+	// surfacing a second, unrelated complaint about it first.
+	for _, col := range r.List.Columns {
+		if !isCanonicalIdent(col.Field) {
+			return fmt.Errorf("name: %q is not a canonical sqlc field spelling; use %q instead", col.Field, canonicalIdent(col.Field))
+		}
+	}
+	for _, fld := range r.Form.Basics {
+		if !isCanonicalIdent(fld.Name) {
+			return fmt.Errorf("name: %q is not a canonical sqlc field spelling; use %q instead", fld.Name, canonicalIdent(fld.Name))
+		}
+	}
+	for _, fld := range r.Form.Advanced {
+		if !isCanonicalIdent(fld.Name) {
+			return fmt.Errorf("name: %q is not a canonical sqlc field spelling; use %q instead", fld.Name, canonicalIdent(fld.Name))
+		}
+	}
+
 	// Form fields (Basics + Advanced combined) must have no case-insensitive duplicates;
 	// columns may repeat as form fields, but the form must not have duplicates.
 	formFieldsLower := make(map[string]bool)
@@ -248,4 +272,68 @@ func isReservedColumnName(name string) bool {
 	default:
 		return false
 	}
+}
+
+// identSQLName and identPascalCase are a deliberate duplicate of
+// internal/generate/store.go's sqlName and pascalCase, byte-for-byte
+// the same algorithm. They cannot be shared by import: internal/generate
+// imports this package (to build rastrillo.Resource-shaped output), so
+// this package importing internal/generate back would cycle, and
+// internal/generate is unexported to every consumer outside this
+// module besides. Duplication is the least-coupling option available —
+// the alternative (a third shared package under internal/ that both
+// import) would add a whole new package for five lines, and neither
+// side of the pair changes without deliberate, rare thought (sqlc's own
+// column-naming convention isn't going anywhere). If store.go's
+// algorithm ever changes, this copy must change with it in the same
+// commit — TestValidateRejections' canonical-ident cases and
+// store_test.go's sqlName/pascalCase cases are the tripwire that would
+// fire if the two drift.
+func identSQLName(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		isUpper := c >= 'A' && c <= 'Z'
+		prevUpper := i > 0 && s[i-1] >= 'A' && s[i-1] <= 'Z'
+		if isUpper && i > 0 && !prevUpper {
+			b.WriteByte('_')
+		}
+		if isUpper {
+			c += 'a' - 'A'
+		}
+		b.WriteByte(c)
+	}
+	return b.String()
+}
+
+func identPascalCase(s string) string {
+	parts := strings.Split(s, "_")
+	for i, p := range parts {
+		if p == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(p[:1]) + p[1:]
+	}
+	return strings.Join(parts, "")
+}
+
+// canonicalIdent is the spelling sqlc's own generated Go field name
+// would derive name back to: the schema column is identSQLName(name),
+// and sqlc pascal-cases that column name for the Go struct field, i.e.
+// identPascalCase(identSQLName(name)). A declared field/column name
+// that isn't already spelled this way (e.g. "title", whose canonical
+// form is "Title"; or "IPAddress", whose consecutive-capitals collapse
+// under identSQLName to "ipaddress" and pascal-case back to
+// "Ipaddress", not "IPAddress") generates actions that reference a
+// struct field sqlc never actually emits — a compile error in gen/,
+// not a validation error at manifest-load time, unless Validate
+// catches it first here.
+func canonicalIdent(name string) string {
+	return identPascalCase(identSQLName(name))
+}
+
+// isCanonicalIdent reports whether name is already its own canonical
+// form — see canonicalIdent's doc.
+func isCanonicalIdent(name string) bool {
+	return canonicalIdent(name) == name
 }
