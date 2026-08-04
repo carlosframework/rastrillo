@@ -179,22 +179,22 @@ func (r *Resource) Validate() error {
 	}
 
 	if len(r.List.Filters) > 1 {
-		return fmt.Errorf("filters: at most one filter definition allowed (error: one filter)")
+		return fmt.Errorf("filters: at most one filter definition allowed")
 	}
 	for _, flt := range r.List.Filters {
 		if !columnFields[flt.Field] {
 			return fmt.Errorf("filter: %q is not a declared column", flt.Field)
 		}
 		if len(flt.Values) == 0 {
-			return fmt.Errorf("filter values: must not be empty (error: value)")
+			return fmt.Errorf("filter values: must not be empty")
 		}
 		valueSet := make(map[string]bool)
 		for _, v := range flt.Values {
 			if !filterValuePattern.MatchString(v) {
-				return fmt.Errorf("filter values: %q is invalid (must match ^[a-z0-9_-]+$, error: value)", v)
+				return fmt.Errorf("filter values: %q is invalid (must match ^[a-z0-9_-]+$)", v)
 			}
 			if valueSet[v] {
-				return fmt.Errorf("filter values: %q is duplicated (error: value)", v)
+				return fmt.Errorf("filter values: %q is duplicated", v)
 			}
 			valueSet[v] = true
 		}

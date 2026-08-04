@@ -99,7 +99,7 @@ func TestValidateAcceptsFiltersAndRequired(t *testing.T) {
 			Columns: []Column{{Field: "Title"}, {Field: "Price", Kind: Money}},
 			Search:  true,
 			Filter:  []string{"Title"},
-			Filters: []Filter{{Field: "Price", Values: []string{"a", "b"}}},
+			Filters: []Filter{{Field: "Title", Values: []string{"a", "b"}}},
 		},
 		Form: Form{
 			Basics:   []Field{{Name: "Title", Required: true}, {Name: "Body", Kind: Textarea}},
