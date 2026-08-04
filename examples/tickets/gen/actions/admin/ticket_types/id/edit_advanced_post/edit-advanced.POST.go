@@ -124,12 +124,13 @@ func formatCentsPlain(cents int64) string {
 
 // parseCents parses a decimal-dollars string (e.g. "12.34") into
 // cents, rejecting more than two decimal places. An empty string
-// parses to zero cents, not an error — v1 has no server-side
-// required-field validation. v1 also has no use for negative prices,
-// so any sign character is rejected outright as a field error rather
-// than accepted and applied: the whole and fractional parts must each
-// be composed entirely of ASCII digits. This is stricter than handing
-// each half to strconv.ParseInt directly (an earlier draft did),
+// parses to zero cents, not an error — a Required Money field rejects
+// blankness on the raw text before this runs. v1 also has no use for
+// negative prices, so any sign character is rejected outright as a
+// field error rather than accepted and applied: the whole and
+// fractional parts must each be composed entirely of ASCII digits.
+// This is stricter than handing each half to strconv.ParseInt
+// directly (an earlier draft did),
 // which happily accepts its own leading "+"/"-" in either half — so
 // "12.-5" or "12.+5" would silently mis-parse into a different
 // magnitude than the digits alone suggest, rather than being rejected
