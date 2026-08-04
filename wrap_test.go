@@ -1,10 +1,12 @@
 package rastrillo
 
 import (
+	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 )
 
 // markerWrap tags every response that traversed the middleware, and
@@ -85,5 +87,65 @@ func TestWrapReturningNilIsABootError(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "Options.Wrap returned a nil handler") {
 		t.Errorf("err = %v, want nil-handler boot error", err)
+	}
+}
+
+func TestWrapComposesWithRouter(t *testing.T) {
+	opts := Options{
+		Router: func(db *sql.DB) (*http.ServeMux, error) {
+			mux := http.NewServeMux()
+			mux.HandleFunc("/orders", func(w http.ResponseWriter, _ *http.Request) {
+				w.Write([]byte("via router"))
+			})
+			return mux, nil
+		},
+		Wrap: markerWrap,
+	}
+	// Serve's own order: resolve the mux, then assemble the handler.
+	var err error
+	opts.Mux, err = buildMux(opts, nil)
+	if err != nil {
+		t.Fatalf("buildMux: %v", err)
+	}
+	handler, err := buildHandler(opts)
+	if err != nil {
+		t.Fatalf("buildHandler: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest("GET", "/orders", nil))
+	if rec.Header().Get("X-Wrapped") != "yes" || rec.Body.String() != "via router" {
+		t.Errorf("marker=%q body=%q; Wrap and Router must be orthogonal",
+			rec.Header().Get("X-Wrapped"), rec.Body.String())
+	}
+}
+
+func TestWrapRunsInsideLocaleStripping(t *testing.T) {
+	fsys := fstest.MapFS{
+		"locales/en.toml": {Data: []byte("greet = \"hello\"\n")},
+		"locales/fr.toml": {Data: []byte("greet = \"bonjour\"\n")},
+	}
+	var sawPath, sawGreet string
+	spy := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			sawPath = r.URL.Path
+			sawGreet = T(r, "greet")
+			next.ServeHTTP(w, r)
+		})
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/orders", func(http.ResponseWriter, *http.Request) {})
+	handler, err := buildHandler(Options{
+		Mux: mux, Wrap: spy,
+		Locales: []string{"en", "fr"}, LocaleFS: fsys,
+	})
+	if err != nil {
+		t.Fatalf("buildHandler: %v", err)
+	}
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/fr/orders", nil))
+	if sawPath != "/orders" {
+		t.Errorf("middleware saw path %q, want %q (stripped)", sawPath, "/orders")
+	}
+	if sawGreet != "bonjour" {
+		t.Errorf("middleware saw T(greet)=%q, want %q (translator must already ride the context)", sawGreet, "bonjour")
 	}
 }
