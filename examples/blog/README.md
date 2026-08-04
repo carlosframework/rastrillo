@@ -143,6 +143,20 @@ fresh database needs the table before anything can add a column to it —
 and `rastrillo.OpenDB` swallows sqlite's "duplicate column" error, which
 is what makes reapplying that `ALTER` on every boot safe.
 
+**Why `Title` has `required = true` in the manifest, but no `required`
+attribute in the ejected form.** The manifest declares `required = true`,
+which generates server-side validation: an empty Title submission
+re-renders the form with a 400 status and an error message. The
+generated form template passes `"Required" true` to the field partial,
+which emits a client-side `required` attribute. When an app ejects the
+form template (`templates/posts/form.html`), it copies the exact
+generated template line as-is — the client-side marker is lost because
+the ejected template is hand-edited for other reasons (status pills,
+publish/unpublish/delete buttons), and the form partials inherit the
+field's error rendering, so server-side validation still works. The
+server is authoritative: a blank Title from any path (hand template or
+fresh client) gets the same 400 re-render.
+
 ## Development
 
 Regenerate after adding, renaming or removing an action:
