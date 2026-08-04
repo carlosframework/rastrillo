@@ -7,4 +7,4 @@ columns = [{ field = "Title" }]
 search  = true
 
 [form]
-basics = [{ name = "Title" }, { name = "Body", kind = "textarea" }]
+basics = [{ name = "Title", required = true }, { name = "Body", kind = "textarea" }]

@@ -28,7 +28,7 @@ func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	store := postsstore.New(ctx.DB)
-	_, err := store.GetPost(r.Context(), id)
+	n, err := store.GetPost(r.Context(), id)
 	if errors.Is(err, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return
@@ -41,6 +41,27 @@ func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
 	vTitle := strings.TrimSpace(r.PostFormValue("Title"))
 	vBody := r.PostFormValue("Body")
 
+	errs := map[string]string{}
+	if vTitle == "" {
+		errs["Title"] = "Title is required"
+	}
+
+	if len(errs) > 0 {
+		fields := map[string]string{
+			"Title": n.Title,
+			"Body":  n.Body,
+		}
+		fields["Title"] = vTitle
+		fields["Body"] = vBody
+		render(ctx, w, "posts/form", http.StatusBadRequest, formView{
+			IsNew:        false,
+			Fields:       fields,
+			Errors:       errs,
+			BasicsAction: fmt.Sprintf("/admin/posts/%d/edit-basics", id),
+		})
+		return
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	if err := store.UpdatePostBasics(r.Context(), postsstore.UpdatePostBasicsParams{
 		Title: vTitle,
@@ -52,6 +73,14 @@ func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/admin/posts/%d", id), http.StatusSeeOther)
+}
+
+type formView struct {
+	IsNew          bool
+	Fields         map[string]string
+	Errors         map[string]string
+	BasicsAction   string
+	AdvancedAction string
 }
 
 // fail logs through Ctx.Logger (when set) and answers a plain 500.

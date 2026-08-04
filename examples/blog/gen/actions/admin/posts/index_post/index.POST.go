@@ -24,6 +24,23 @@ func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
 	vTitle := strings.TrimSpace(r.PostFormValue("Title"))
 	vBody := r.PostFormValue("Body")
 
+	errs := map[string]string{}
+	if vTitle == "" {
+		errs["Title"] = "Title is required"
+	}
+
+	if len(errs) > 0 {
+		render(ctx, w, "posts/form", http.StatusBadRequest, formView{
+			IsNew: true,
+			Fields: map[string]string{
+				"Title": vTitle,
+				"Body":  vBody,
+			},
+			Errors: errs,
+		})
+		return
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339)
 	store := postsstore.New(ctx.DB)
 	id, err := store.CreatePost(r.Context(), postsstore.CreatePostParams{
