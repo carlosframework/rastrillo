@@ -301,10 +301,20 @@ func showHTML(r rastrillo.Resource) []byte {
 }
 
 // formField renders one field-text/field-textarea call for f, wired to
-// its Fields/Errors data keys and its resource-key label.
+// its Fields/Errors data keys and its resource-key label. A Required
+// field adds "Required" true to the dict — field-text.html/
+// field-textarea.html read that key for both the required attribute
+// and the visible "*" marker (see their own docs); a non-Required field
+// omits the key entirely rather than emitting "Required" false, which
+// is what keeps this call byte-identical to before Required existed
+// for every field that doesn't declare it.
 func formField(r rastrillo.Resource, f rastrillo.Field) string {
-	return fmt.Sprintf("{{template %q dict \"Name\" %q \"Label\" (T %q) \"Value\" .Fields.%s \"Error\" .Errors.%s}}\n",
-		fieldPartial(f.Kind), f.Name, resourceKey(r.Name, "field."+sqlName(f.Name)), f.Name, f.Name)
+	required := ""
+	if f.Required {
+		required = " \"Required\" true"
+	}
+	return fmt.Sprintf("{{template %q dict \"Name\" %q \"Label\" (T %q) \"Value\" .Fields.%s \"Error\" .Errors.%s%s}}\n",
+		fieldPartial(f.Kind), f.Name, resourceKey(r.Name, "field."+sqlName(f.Name)), f.Name, f.Name, required)
 }
 
 // formFoot renders one form-foot call. Cancel always targets the list

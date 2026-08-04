@@ -38,8 +38,8 @@
 //	                          though a re-render only happens, and so
 //	                          only those files call Render at all, when
 //	                          their own field group actually has a
-//	                          Money field to fail on (see "no
-//	                          validation branch" below). Every file
+//	                          Money field or a Required field to fail on
+//	                          (see "no validation branch" below). Every file
 //	                          that does call it uses this same name:
 //	                          form.html's IsNew flag is what tells the
 //	                          New state from the Edit state, not a
@@ -80,32 +80,39 @@
 //     the tradeoff).
 //   - index.POST (create): parses every Form.Basics + Form.Advanced
 //     field; a Money field's value is parsed as decimal dollars via
-//     parseCents, which rejects more than two decimal places. Any
-//     parse failure re-renders "<name>/form" (IsNew: true) at 400 with
-//     the field's message in Errors and every field's raw submitted
-//     text preserved in Fields — never reformatted, so a typo stays
-//     exactly as typed for correction. Success stamps both timestamps
-//     with the same UTC RFC3339 "now" and redirects 303 to Show.
+//     parseCents, which rejects more than two decimal places, and any
+//     field (Text, Textarea or Money) the manifest marks Required is
+//     checked for blankness — Text/Textarea via strings.TrimSpace,
+//     Money via its RAW submitted text (so "0"/"0.00" is a valid
+//     required value; only an empty input trips the required check —
+//     see parseField). Any parse failure or required-blank failure
+//     re-renders "<name>/form" (IsNew: true) at 400 with the field's
+//     message in Errors and every field's raw submitted text preserved
+//     in Fields — never reformatted, so a typo stays exactly as typed
+//     for correction. A Required Money field that's both blank AND
+//     would otherwise fail to parse (it never does — "" parses to zero,
+//     see parseCents) only ever reports the required message, never
+//     both; a present-but-invalid Money value reports the parse error,
+//     never the required one — see parseField's Money case. Success
+//     stamps both timestamps with the same UTC RFC3339 "now" and
+//     redirects 303 to Show.
 //   - [id]/index.GET (show): Get-or-404, then every declared field
 //     (columns(r) order) into Fields, Money formatted.
 //   - new.GET / [id]/edit.GET: render "<name>/form" with zero values
 //     (New) or the record's current values (Edit, Get-or-404 first).
 //   - [id]/edit-basics.POST / [id]/edit-advanced.POST: Get-or-404 (to
 //     answer 404 before ever attempting an UPDATE against a missing
-//     row, and — only when this field group has a Money field — to
-//     source the OTHER group's current values for the 400 re-render),
-//     then parse and update only that field group. A Money parse
-//     failure re-renders "<name>/form" (IsNew: false) at 400 with
-//     Fields seeded from the fetched record and overridden with this
-//     group's just-submitted raw text. A field group with no Money
+//     row, and — only when this field group has a Money field or a
+//     Required field — to source the OTHER group's current values for
+//     the 400 re-render), then parse and update only that field group.
+//     A Money parse failure or a Required-blank failure re-renders
+//     "<name>/form" (IsNew: false) at 400 with Fields seeded from the
+//     fetched record and overridden with this group's just-submitted
+//     raw text. A field group with no Money field and no Required
 //     field at all has no validation branch to speak of — generation
-//     time already knows no parse can fail, so none is emitted (the
-//     same "bake what the manifest already decided" discipline
+//     time already knows no check here can fail, so none is emitted
+//     (the same "bake what the manifest already decided" discipline
 //     templates.go uses for the Advanced-form and Search gates).
-//
-// No server-side required-field validation exists anywhere in this
-// slice (a deliberate v1 rule) — an empty Money field parses to zero
-// cents, never an error.
 package generate
 
 import (
@@ -1133,9 +1140,9 @@ render(ctx, w, %q, http.StatusOK, formView{
 
 // updatePOST builds edit-basics.POST or edit-advanced.POST: they are
 // the same shape (Get-or-404, parse this group's fields, update,
-// redirect — or, only when this group declares a Money field, a
-// validation branch), parameterized on which field group and which
-// sqlc Update query own it.
+// redirect — or, only when this group declares a Money field or a
+// Required field, a validation branch), parameterized on which field
+// group and which sqlc Update query own it.
 func updatePOST(r rastrillo.Resource, module string, group []rastrillo.Field, groupName string) string {
 	alias, path := storeImport(r, module)
 	singular := singularPascal(r.Name)
@@ -1154,7 +1161,14 @@ func updatePOST(r rastrillo.Resource, module string, group []rastrillo.Field, gr
 			errChecks = append(errChecks, ec)
 		}
 	}
-	groupHasMoney := len(errChecks) > 0
+	// groupHasValidation is true when ANY field in this group can fail
+	// validation — a Money parse (any Money field) or a Required-blank
+	// check (any Required Text/Textarea/Money field). A group with
+	// neither has no way to fail, so no validation branch, no `errs`
+	// map, and no `n` (the fetched record) is needed at all — Get-or-404
+	// still runs (404 must win over a validation failure), its result
+	// just discarded.
+	groupHasValidation := len(errChecks) > 0
 
 	var paramLines []string
 	for _, f := range group {
@@ -1189,7 +1203,7 @@ func updatePOST(r rastrillo.Resource, module string, group []rastrillo.Field, gr
 `)
 	fmt.Fprintf(&b, "store := %s.New(ctx.DB)\n", alias)
 
-	if groupHasMoney {
+	if groupHasValidation {
 		fmt.Fprintf(&b, "n, err := store.Get%s(r.Context(), id)\n", singular)
 	} else {
 		fmt.Fprintf(&b, "_, err := store.Get%s(r.Context(), id)\n", singular)
@@ -1205,7 +1219,7 @@ func updatePOST(r rastrillo.Resource, module string, group []rastrillo.Field, gr
 		b.WriteString(d)
 	}
 
-	if groupHasMoney {
+	if groupHasValidation {
 		b.WriteString("\nerrs := map[string]string{}\n")
 		for _, ec := range errChecks {
 			b.WriteString(ec)
@@ -1235,7 +1249,7 @@ func updatePOST(r rastrillo.Resource, module string, group []rastrillo.Field, gr
 	fmt.Fprintf(&b, "fail(ctx, w, %q, err)\nreturn\n}\n", "updating "+r.Name)
 	fmt.Fprintf(&b, "http.Redirect(w, r, fmt.Sprintf(%q, id), http.StatusSeeOther)\n}\n", r.Route+"/%d")
 
-	if groupHasMoney {
+	if groupHasValidation {
 		b.WriteString(formViewType)
 	}
 	b.WriteString(helperFuncs(r.Name))
@@ -1257,33 +1271,78 @@ type parsedField struct {
 	Decls     string // Go statements assigning its local variable(s)
 	ParamLine string // e.g. "Price: vPrice,\n" — a store Params field
 	RawExpr   string // the just-submitted value, for a 400 re-render's Fields override
-	ErrCheck  string // "" or an `if errX != nil { errs["Price"] = ... }` block
+	ErrCheck  string // "" or an `if ... { errs["Price"] = ... }` block (a parse failure, a Required-blank failure, or both in sequence — see the Money case)
+}
+
+// requiredMessage renders f's required-field error text: literal
+// English containing "required", reusing manifestlocales.go's titleCase
+// so the field name reads the same human way its own form label does
+// ("Title" -> "Title is required", "MaxPerOrder" -> "Max per order is
+// required") without needing a locale catalog lookup — this string
+// isn't translated, it's a plain server-side validation message.
+func requiredMessage(f rastrillo.Field) string {
+	return titleCase(f.Name) + " is required"
 }
 
 func parseField(f rastrillo.Field) parsedField {
 	v := "v" + f.Name
 	switch f.Kind {
 	case rastrillo.Textarea:
+		var errCheck string
+		if f.Required {
+			// Textarea's Decls (unlike Text's) keeps the raw submitted
+			// value untrimmed — RawExpr must preserve exactly what was
+			// typed for the 400 re-render's Fields override — so the
+			// required check trims here, not at Decls.
+			errCheck = fmt.Sprintf("if strings.TrimSpace(%s) == \"\" {\nerrs[%q] = %q\n}\n", v, f.Name, requiredMessage(f))
+		}
 		return parsedField{
 			Decls:     fmt.Sprintf("%s := r.PostFormValue(%q)\n", v, f.Name),
 			ParamLine: fmt.Sprintf("%s: %s,\n", f.Name, v),
 			RawExpr:   v,
+			ErrCheck:  errCheck,
 		}
 	case rastrillo.Money:
 		raw := v + "Raw"
 		errVar := "err" + f.Name
+		var errCheck string
+		if f.Required {
+			// Required-ness is checked against the RAW submitted text,
+			// not the parsed cents value: parseCents("") succeeds with
+			// 0 (see its own doc), so an empty input never trips
+			// errVar != nil on its own — only the raw == "" branch
+			// below catches it. "0"/"0.00" is a non-empty raw string
+			// that parses cleanly, so it lands in neither branch and is
+			// accepted, matching the brief's "0 is a valid required
+			// Money value". A present-but-invalid value (raw != "")
+			// falls to the else-if and reports the parse error, never
+			// the required one.
+			errCheck = fmt.Sprintf("if %s == \"\" {\nerrs[%q] = %q\n} else if %s != nil {\nerrs[%q] = %s.Error()\n}\n",
+				raw, f.Name, requiredMessage(f), errVar, f.Name, errVar)
+		} else {
+			errCheck = fmt.Sprintf("if %s != nil {\nerrs[%q] = %s.Error()\n}\n", errVar, f.Name, errVar)
+		}
 		return parsedField{
 			Decls: fmt.Sprintf("%s := r.PostFormValue(%q)\n%s, %s := parseCents(%s)\n",
 				raw, f.Name, v, errVar, raw),
 			ParamLine: fmt.Sprintf("%s: %s,\n", f.Name, v),
 			RawExpr:   raw,
-			ErrCheck:  fmt.Sprintf("if %s != nil {\nerrs[%q] = %s.Error()\n}\n", errVar, f.Name, errVar),
+			ErrCheck:  errCheck,
 		}
 	default: // Text
+		var errCheck string
+		if f.Required {
+			// Decls already trims (strings.TrimSpace, below), so v
+			// itself is the value to check — no second TrimSpace needed
+			// here (contrast the Textarea case, whose Decls does NOT
+			// trim, for RawExpr's sake).
+			errCheck = fmt.Sprintf("if %s == \"\" {\nerrs[%q] = %q\n}\n", v, f.Name, requiredMessage(f))
+		}
 		return parsedField{
 			Decls:     fmt.Sprintf("%s := strings.TrimSpace(r.PostFormValue(%q))\n", v, f.Name),
 			ParamLine: fmt.Sprintf("%s: %s,\n", f.Name, v),
 			RawExpr:   v,
+			ErrCheck:  errCheck,
 		}
 	}
 }
