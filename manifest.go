@@ -18,9 +18,10 @@ import (
 type RenderFunc func(ctx *Ctx, w http.ResponseWriter, page string, status int, data any)
 
 var (
-	namePattern    = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
-	segmentPattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
-	identPattern   = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
+	namePattern        = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
+	segmentPattern     = regexp.MustCompile(`^[a-z0-9_-]+$`)
+	identPattern       = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
+	filterValuePattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
 )
 
 // Kind categorizes the input type for a column or form field.
@@ -40,6 +41,12 @@ const (
 	Mergeable StoreKind = "mergeable"
 )
 
+// Filter specifies a column and a set of values for filtering a list.
+type Filter struct {
+	Field  string   `json:"field" toml:"field"`
+	Values []string `json:"values" toml:"values"`
+}
+
 // Resource is one manifest: the §9 sugar a route opts into. Its JSON
 // encoding (the struct tags here and on the types it embeds) is the
 // generator's stable artifact — gen/manifest.json — consumed by any
@@ -57,7 +64,8 @@ type Resource struct {
 type List struct {
 	Columns []Column `json:"columns" toml:"columns"`
 	Search  bool     `json:"search" toml:"search"`
-	Filter  []string `json:"filter" toml:"filter"`
+	Filter  []string `json:"filter" toml:"filter"` // superseded by Filters; still validated, generates the WHERE clause but no control.
+	Filters []Filter `json:"filters" toml:"filters"`
 }
 
 // Column describes a column in a resource list.
@@ -74,8 +82,9 @@ type Form struct {
 
 // Field describes an input field in a form.
 type Field struct {
-	Name string `json:"name" toml:"name"`
-	Kind Kind   `json:"kind" toml:"kind"` // zero value means Text
+	Name     string `json:"name" toml:"name"`
+	Kind     Kind   `json:"kind" toml:"kind"` // zero value means Text
+	Required bool   `json:"required" toml:"required"`
 }
 
 // Validate checks the resource declaration for consistency and validity.
@@ -166,6 +175,28 @@ func (r *Resource) Validate() error {
 	for _, f := range r.List.Filter {
 		if !columnFields[f] {
 			return fmt.Errorf("filter: %q is not a declared column", f)
+		}
+	}
+
+	if len(r.List.Filters) > 1 {
+		return fmt.Errorf("filters: at most one filter definition allowed (error: one filter)")
+	}
+	for _, flt := range r.List.Filters {
+		if !columnFields[flt.Field] {
+			return fmt.Errorf("filter: %q is not a declared column", flt.Field)
+		}
+		if len(flt.Values) == 0 {
+			return fmt.Errorf("filter values: must not be empty (error: value)")
+		}
+		valueSet := make(map[string]bool)
+		for _, v := range flt.Values {
+			if !filterValuePattern.MatchString(v) {
+				return fmt.Errorf("filter values: %q is invalid (must match ^[a-z0-9_-]+$, error: value)", v)
+			}
+			if valueSet[v] {
+				return fmt.Errorf("filter values: %q is duplicated (error: value)", v)
+			}
+			valueSet[v] = true
 		}
 	}
 

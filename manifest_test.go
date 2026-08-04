@@ -59,6 +59,21 @@ func TestValidateRejections(t *testing.T) {
 		{"reserved column name Id", func(r *Resource) { r.List.Columns[1].Field = "Id" }, "reserved"},
 		{"reserved field name CreatedAt", func(r *Resource) { r.Form.Basics[0].Name = "CreatedAt" }, "reserved"},
 		{"reserved field name is case-insensitive", func(r *Resource) { r.Form.Advanced[0].Name = "updatedat" }, "reserved"},
+		{"two filters", func(r *Resource) {
+			r.List.Filters = []Filter{{Field: "Title", Values: []string{"a"}}, {Field: "Price", Values: []string{"b"}}}
+		}, "one filter"},
+		{"filter field not a column", func(r *Resource) {
+			r.List.Filters = []Filter{{Field: "Nope", Values: []string{"a"}}}
+		}, "column"},
+		{"filter no values", func(r *Resource) {
+			r.List.Filters = []Filter{{Field: "Title", Values: nil}}
+		}, "value"},
+		{"filter bad value", func(r *Resource) {
+			r.List.Filters = []Filter{{Field: "Title", Values: []string{"On Sale"}}}
+		}, "value"},
+		{"filter duplicate value", func(r *Resource) {
+			r.List.Filters = []Filter{{Field: "Title", Values: []string{"a", "a"}}}
+		}, "value"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -72,6 +87,27 @@ func TestValidateRejections(t *testing.T) {
 				t.Errorf("error %q missing %q", err, tc.want)
 			}
 		})
+	}
+}
+
+func TestValidateAcceptsFiltersAndRequired(t *testing.T) {
+	r := Resource{
+		Name:  "notes",
+		Route: "/admin/notes",
+		Store: Exclusive,
+		List: List{
+			Columns: []Column{{Field: "Title"}, {Field: "Price", Kind: Money}},
+			Search:  true,
+			Filter:  []string{"Title"},
+			Filters: []Filter{{Field: "Price", Values: []string{"a", "b"}}},
+		},
+		Form: Form{
+			Basics:   []Field{{Name: "Title", Required: true}, {Name: "Body", Kind: Textarea}},
+			Advanced: []Field{{Name: "Price", Kind: Money}},
+		},
+	}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
 	}
 }
 

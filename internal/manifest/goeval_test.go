@@ -253,23 +253,27 @@ func TestArtifactIsStableAndSorted(t *testing.T) {
       "search": true,
       "filter": [
         "Title"
-      ]
+      ],
+      "filters": null
     },
     "form": {
       "basics": [
         {
           "name": "Title",
-          "kind": "text"
+          "kind": "text",
+          "required": false
         },
         {
           "name": "Body",
-          "kind": "textarea"
+          "kind": "textarea",
+          "required": false
         }
       ],
       "advanced": [
         {
           "name": "Price",
-          "kind": "money"
+          "kind": "money",
+          "required": false
         }
       ]
     }
