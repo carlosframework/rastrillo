@@ -60,12 +60,24 @@
 //   - index.GET: parses q (only when List.Search is set — and only
 //     really used by the store when there is at least one eligible
 //     text/textarea List column; see searchColumns), one query param
-//     per List.Filter entry (named by its sqlName, e.g. ?title=), and
-//     page (default 1). Builds Rows from List.Columns[0] (Main) and,
-//     if declared, List.Columns[1] (Sub) — Money formatted as a dollar
-//     string via formatCents, everything else the raw column value.
-//     Pagination has no gap-collapsing (v1 simplification: every page
-//     number renders; see the report for the tradeoff).
+//     per filterFields(r) entry (store.go's dedup of bare List.Filter
+//     and List.Filters[].Field — named by its sqlName, e.g. ?title=),
+//     and page (default 1). A field ALSO declared via List.Filters
+//     (capped at one entry by Validate) gets its raw query value run
+//     through a generated normalize<Field> first — unknown/absent
+//     collapses to "" (all), never a 400 — and the action builds a
+//     filterView (SummaryKey/AriaField/Items, every label a T KEY, never
+//     a resolved string) the render call's listView.Filter carries;
+//     list.html renders it as an inline dropdown (see templates.go).
+//     A bare-only List.Filter field (no List.Filters counterpart) still
+//     gets its query param parsed/carried/bound as a raw passthrough,
+//     exactly as before this — it has no enumerable Values to build a
+//     control or a normalizer from. Builds Rows from List.Columns[0]
+//     (Main) and, if declared, List.Columns[1] (Sub) — Money formatted
+//     as a dollar string via formatCents, everything else the raw
+//     column value. Pagination has no gap-collapsing (v1
+//     simplification: every page number renders; see the report for
+//     the tradeoff).
 //   - index.POST (create): parses every Form.Basics + Form.Advanced
 //     field; a Money field's value is parsed as decimal dollars via
 //     parseCents, which rejects more than two decimal places. Any
@@ -287,13 +299,13 @@ func zeroFieldsMapLiteral(r rastrillo.Resource) string {
 	return b.String()
 }
 
-// filterVar is one List.Filter entry's generated shape: a query-string
-// key (its sqlName) and a local variable name ("filter" + the declared
-// name, used as-is — not reconstructed through sqlName/pascalCase).
-// Param — "Filter"+Field — has to spell exactly what sqlc names the
-// CountXParams/ListXParams struct field for this filter, and sqlc
-// derives that name as pascalCase(sqlName(f)), NOT f itself. Those two
-// only agree for every identPattern-valid f because
+// filterVar is one filterFields(r) entry's generated shape: a
+// query-string key (its sqlName) and a local variable name ("filter" +
+// the declared name, used as-is — not reconstructed through
+// sqlName/pascalCase). Param — "Filter"+Field — has to spell exactly
+// what sqlc names the CountXParams/ListXParams struct field for this
+// filter, and sqlc derives that name as pascalCase(sqlName(f)), NOT f
+// itself. Those two only agree for every identPattern-valid f because
 // rastrillo.Resource.Validate additionally rejects any field/column
 // name where pascalCase(sqlName(name)) != name (see manifest.go) —
 // without that guarantee a name like "title" or "IPAddress" would
@@ -309,9 +321,19 @@ type filterVar struct {
 	Param string // the store Params field name, "Filter"+Field
 }
 
+// filterVars walks filterFields(r) — the deduped union of bare
+// List.Filter and List.Filters[].Field (store.go) — rather than
+// r.List.Filter alone, so a field declared ONLY via List.Filters (with
+// enumerable Values, no bare List.Filter entry) still gets its query
+// param parsed, carried and bound to the store's filter_<col> arg; the
+// same WHERE clause (whereClauses in store.go) already honors it either
+// way, so the action-side param handling has to keep up. A field
+// present in both collections (the filteredFixtureResource shape:
+// declared as both a bare Filter and a Filters[] with Values) appears
+// here exactly once.
 func filterVars(r rastrillo.Resource) []filterVar {
 	var out []filterVar
-	for _, f := range r.List.Filter {
+	for _, f := range filterFields(r) {
 		out = append(out, filterVar{
 			Field: f,
 			Query: sqlName(f),
@@ -320,6 +342,21 @@ func filterVars(r rastrillo.Resource) []filterVar {
 		})
 	}
 	return out
+}
+
+// declaredFilter returns r's single List.Filters entry, if declared:
+// Validate caps List.Filters at exactly one (len(r.List.Filters) > 1 is
+// rejected — manifest.go), so "declared" here always means exactly one
+// or none. Field always matches one of filterVars(r)'s own Field
+// values, since filterFields unions List.Filter and List.Filters[].Field
+// (store.go) — a Filters entry can never be absent from that union.
+// Values is its enumerable dropdown choices, already validated non-empty
+// and deduped by Validate.
+func declaredFilter(r rastrillo.Resource) (field string, values []string, ok bool) {
+	if len(r.List.Filters) != 1 {
+		return "", nil, false
+	}
+	return r.List.Filters[0].Field, r.List.Filters[0].Values, true
 }
 
 // ── Shared boilerplate, identical across all seven files for a given
@@ -463,15 +500,46 @@ func isDigits(s string) bool {
 `, name+": ", name+": ")
 }
 
-const listViewTypes = `
+// listViewTypes renders index.GET's data-shape types. hasFilter is
+// false for every resource without a declared List.Filters entry — the
+// exact string this function returned before Filter existed at all, so
+// that byte-identical regression golden (fixtureResource/
+// filterOnlyFixtureResource, neither of which declares List.Filters)
+// never sees a Filter field it has no data for. hasFilter true (a
+// declared List.Filters — see declaredFilter) adds listView.Filter and
+// the filterView/filterItem pair the dropdown markup in list.html reads
+// (see templates.go's listHTML): LabelKey fields, never resolved
+// strings — the template resolves each one itself via (T .LabelKey) at
+// render time, since only the template has a bound T (see the package
+// doc's "labels resolve at RENDER time" note on actionIndexGET).
+func listViewTypes(hasFilter bool) string {
+	filterField := ""
+	filterTypes := ""
+	if hasFilter {
+		filterField = "\tFilter     filterView\n"
+		filterTypes = `
+type filterView struct {
+	SummaryKey string
+	AriaField  string
+	Items      []filterItem
+}
+
+type filterItem struct {
+	Href     string
+	LabelKey string
+	Current  bool
+}
+`
+	}
+	return fmt.Sprintf(`
 type listView struct {
 	Empty      bool
 	Query      string
 	Carry      [][2]string
-	Rows       []listRow
+%sRows       []listRow
 	Pagination listPagination
 }
-
+%s
 type listRow struct {
 	Href string
 	Main string
@@ -490,7 +558,8 @@ type listPageItem struct {
 	Disabled bool
 	Gap      bool
 }
-`
+`, filterField, filterTypes)
+}
 
 const showViewType = `
 type showView struct {
@@ -519,6 +588,27 @@ func actionIndexGET(r rastrillo.Resource, module string) string {
 	searchParam := r.List.Search && len(searchColumns(r)) > 0
 	main, sub, hasSub := mainSubColumns(r)
 
+	// declaredField/declaredValues/filtersDeclared drive the ONE thing
+	// this task adds beyond filterVars' plain query-param plumbing: a
+	// rendered dropdown control. A bare List.Filter entry (no Filters)
+	// still gets its query param parsed and bound above — it just has no
+	// enumerable Values to build a control or a normalize function from
+	// (see the package doc's "still validated, generates the WHERE
+	// clause but no control" note), so it stays a raw passthrough exactly
+	// as before this task. declaredVar resolves the matching filterVar by
+	// Field — always found, since filterFields (store.go) always
+	// includes a declared Filters[].Field in its union.
+	declaredField, declaredValues, filtersDeclared := declaredFilter(r)
+	var declaredVar filterVar
+	if filtersDeclared {
+		for _, fv := range fvars {
+			if fv.Field == declaredField {
+				declaredVar = fv
+				break
+			}
+		}
+	}
+
 	var b strings.Builder
 	b.WriteString("import (\n")
 	b.WriteString("\t\"fmt\"\n")
@@ -539,7 +629,11 @@ func actionIndexGET(r rastrillo.Resource, module string) string {
 		searchExpr = "search"
 	}
 	for _, fv := range fvars {
-		fmt.Fprintf(&b, "%s := r.URL.Query().Get(%q)\n", fv.Var, fv.Query)
+		if filtersDeclared && fv.Field == declaredField {
+			fmt.Fprintf(&b, "%s := normalize%s(r.URL.Query().Get(%q))\n", fv.Var, fv.Field, fv.Query)
+		} else {
+			fmt.Fprintf(&b, "%s := r.URL.Query().Get(%q)\n", fv.Var, fv.Query)
+		}
 	}
 
 	b.WriteString(`
@@ -655,16 +749,22 @@ if show {
 }
 `)
 
+	filterField := ""
+	if filtersDeclared {
+		b.WriteString(filterViewStmts(r, declaredVar, declaredValues, searchExpr))
+		filterField = "Filter:      filter,\n"
+	}
+
 	fmt.Fprintf(&b, `
 render(ctx, w, %q, http.StatusOK, listView{
 	Empty:      total == 0,
 	Query:      %s,
 	Carry:      carry,
-	Rows:       items,
+	%sRows:       items,
 	Pagination: listPagination{Show: show, Items: pageItems},
 })
 }
-`, r.Name+"/list", searchExpr)
+`, r.Name+"/list", searchExpr, filterField)
 
 	fmt.Fprintf(&b, `
 // href builds one list/pagination link, preserving the current search
@@ -682,8 +782,106 @@ func href(search string, carry [][2]string, page int) string {
 }
 `, r.Route)
 
-	b.WriteString(listViewTypes)
+	if filtersDeclared {
+		b.WriteString(filterHelperFuncs(r, declaredVar, declaredValues))
+	}
+
+	b.WriteString(listViewTypes(filtersDeclared))
 	b.WriteString(helperFuncs(r.Name))
+	return b.String()
+}
+
+// filterViewStmts renders the Handle-body statements that build the
+// declared filter's filterView value (assigned to the local "filter"
+// listView reads into its Filter field): a "" All item first, then one
+// item per declared value, in declaration order — matching the "All
+// first" ordering the blog's hand pattern (BuildStatusFilter) set. Every
+// Href goes through fv.Field's own filter<Field>Href, which — per the
+// brief's contract — carries the current search and this ONE filter
+// value, never page (changing a filter starts over at page 1) and never
+// any OTHER filter field's current value (Filters is capped at one
+// declared entry by Validate, so there is no second value to carry).
+// Every label is a T KEY (filter<Field>LabelKey), never a resolved
+// string — only list.html's template execution has a bound T (see the
+// package doc's "labels resolve at RENDER time" note).
+func filterViewStmts(r rastrillo.Resource, fv filterVar, values []string, searchExpr string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "\nfilter := filterView{\n")
+	fmt.Fprintf(&b, "SummaryKey: filter%sLabelKey(%s),\n", fv.Field, fv.Var)
+	fmt.Fprintf(&b, "AriaField:  %q,\n", resourceKey(r.Name, "field."+fv.Query))
+	b.WriteString("Items: []filterItem{\n")
+	fmt.Fprintf(&b, "{Href: filter%sHref(%s, \"\"), LabelKey: filter%sLabelKey(\"\"), Current: %s == \"\"},\n",
+		fv.Field, searchExpr, fv.Field, fv.Var)
+	for _, v := range values {
+		fmt.Fprintf(&b, "{Href: filter%sHref(%s, %q), LabelKey: filter%sLabelKey(%q), Current: %s == %q},\n",
+			fv.Field, searchExpr, v, fv.Field, v, fv.Var, v)
+	}
+	b.WriteString("},\n}\n")
+	return b.String()
+}
+
+// filterHelperFuncs renders the three package-level functions the
+// declared filter's dropdown needs — normalize<Field>, filter<Field>
+// LabelKey and filter<Field>Href — parameterized on the resource so
+// AriaField and every LabelKey/Href reference this resource's own name,
+// route and sqlName(fv.Field), matching resourceKey's "resource.<name>.
+// <suffix>" shape (templates.go) and sqlName's column-name convention
+// (store.go) exactly, so the T keys this emits are the SAME keys
+// EmitLocales (a later task) must cover.
+func filterHelperFuncs(r rastrillo.Resource, fv filterVar, values []string) string {
+	var b strings.Builder
+	quoted := make([]string, len(values))
+	for i, v := range values {
+		quoted[i] = fmt.Sprintf("%q", v)
+	}
+	fmt.Fprintf(&b, `
+// normalize%s maps a raw query value onto %s's declared filter values:
+// anything else — an empty string, a stale bookmark, a hand-edited URL —
+// normalizes to "" (all), never a 400.
+func normalize%s(raw string) string {
+	switch raw {
+	case %s:
+		return raw
+	}
+	return ""
+}
+
+// filter%sLabelKey resolves a normalized %s value ("" or a declared
+// value) to its catalog key; T renders it at request time, never here.
+func filter%sLabelKey(v string) string {
+	if v == "" {
+		return "ui.all"
+	}
+	return %q + v
+}
+
+// filter%sHref builds one %s dropdown item's link: the current search
+// plus this filter value (never page — changing a filter starts at page
+// 1 by construction), value == "" for the "All" item.
+func filter%sHref(search, value string) string {
+	var params []string
+	if search != "" {
+		params = append(params, "q="+url.QueryEscape(search))
+	}
+	if value != "" {
+		params = append(params, %q+url.QueryEscape(value))
+	}
+	if len(params) == 0 {
+		return %q
+	}
+	return %q + "?" + strings.Join(params, "&")
+}
+`,
+		fv.Field, fv.Field,
+		fv.Field, strings.Join(quoted, ", "),
+		fv.Field, fv.Field,
+		fv.Field, resourceKey(r.Name, "filter."+fv.Query)+".",
+		fv.Field, fv.Field,
+		fv.Field,
+		fv.Query+"=",
+		r.Route,
+		r.Route,
+	)
 	return b.String()
 }
 
