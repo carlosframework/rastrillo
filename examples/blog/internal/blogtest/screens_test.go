@@ -13,6 +13,12 @@ import (
 // published posts (so the guarded pagination strip appears on both list
 // screens, and /?page=2 is a real second page rather than an empty
 // state), plus one draft so the edit screen has a neutral pill to show.
+//
+// The admin list/new/edit/show targets all render through the
+// manifest system's own template tree now (task 10's adoption):
+// posts/show stays fully generated, posts/list and posts/form are
+// ejected app-owned files (task 11) rather than the old hand
+// admin_list.html/admin_new.html/admin_edit.html.
 func populatedScreens(t *testing.T) map[string]string {
 	t.Helper()
 	app, db := newApp(t)
@@ -31,6 +37,7 @@ func populatedScreens(t *testing.T) map[string]string {
 		"/admin/posts?q=go",
 		"/admin/posts?q=zzz",
 		"/admin/posts/new",
+		fmt.Sprintf("/admin/posts/%d", published),
 		fmt.Sprintf("/admin/posts/%d/edit", published),
 		fmt.Sprintf("/admin/posts/%d/edit", draft),
 	} {
@@ -101,6 +108,12 @@ func TestAllStockPartialsAppearAcrossTheApp(t *testing.T) {
 func TestEveryScreenHasAPageHeaderAndATitle(t *testing.T) {
 	titleRe := regexp.MustCompile(`<title>([^<]+)</title>`)
 	for name, html := range allScreens(t) {
+		// Every screen carries a page-header now, generated and
+		// ejected alike: task 11 ejected posts/list and posts/form
+		// (templates/posts/{list,form}.html) and added one to both
+		// the New and Edit screens the (single) ejected form.html
+		// covers — the exclusion this test used to need for them is
+		// gone along with the reason for it.
 		if !strings.Contains(html, `<header class="rst-page-header">`) {
 			t.Errorf("%s has no page header", name)
 		}

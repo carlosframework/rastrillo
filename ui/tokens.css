@@ -416,6 +416,26 @@ body {
   font-weight: 600;
 }
 
+/* ── detail-list ──────────────────────────────────────────────────── */
+.rst-detail {
+  display: grid;
+  gap: var(--rst-sp-2) var(--rst-sp-5);
+  grid-template-columns: max-content 1fr;
+  margin: 0;
+}
+.rst-detail dt {
+  color: var(--rst-text-muted);
+  font-size: var(--rst-fs-sm);
+  font-weight: 600;
+}
+.rst-detail dd {
+  margin: 0;
+}
+.rst-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--rst-fs-sm);
+}
+
 /* ── page-header ──────────────────────────────────────────────────── */
 .rst-page-header {
   align-items: baseline;

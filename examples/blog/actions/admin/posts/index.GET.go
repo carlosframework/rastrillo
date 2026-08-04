@@ -39,7 +39,7 @@ func Handle(ctx *rastrillo.Ctx, w http.ResponseWriter, r *http.Request) {
 		carry = [][2]string{{"status", status}}
 	}
 
-	blog.Render(ctx, w, "admin_list", http.StatusOK, blog.AdminListView{
+	blog.Render(ctx, w, "posts/list", http.StatusOK, blog.AdminListView{
 		Head:        blog.Head{Title: "Posts"},
 		Query:       q,
 		Carry:       carry,

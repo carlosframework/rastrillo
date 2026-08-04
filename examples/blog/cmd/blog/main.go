@@ -17,6 +17,7 @@ import (
 
 	blogassets "blog"
 	"blog/gen"
+	"blog/gen/locales"
 	"blog/internal/blog"
 )
 
@@ -28,16 +29,35 @@ func main() {
 	// the *sql.DB back through Router — the F4 seam. No hand-copied
 	// DSN, no Resolve dance, no double-open to avoid.
 	err := rastrillo.Run(rastrillo.Options{
-		DBPath:     "blog.db",
-		Migrations: []string{blog.Migration},
-		Logger:     logger,
+		DBPath: "blog.db",
+		// The generated postsstore.Migrations creates the posts table
+		// first; blog.Migrations already carries that plus the app's
+		// own additive published column, in that order (see
+		// internal/blog/store.go).
+		Migrations: blog.Migrations,
+		// BaseCatalog layers under any app catalog the manifest
+		// system's generated templates reference (resource.posts.*,
+		// ui.*) — gen/locales/locales.go's var, emitted from the same
+		// map as the human-readable gen/locales/en.toml. The blog is
+		// monolingual today (no Options.Locales), so this doesn't
+		// drive rastrillo's own request-scoped T; internal/blog's
+		// render adapter (genrender.go) reads locales.BaseCatalog
+		// directly for that. Wiring it here regardless keeps main.go
+		// honest about where the catalog comes from, and is what a
+		// later locale-aware revision would already need in place.
+		BaseCatalog: locales.BaseCatalog,
+		Logger:      logger,
 		Router: func(db *sql.DB) (*http.ServeMux, error) {
 			// A fresh Ctx per request. Actor.Human is true and
 			// Actor.Name empty: honest for an app with no auth, and
 			// the one line a real deployment would replace with a
-			// session lookup.
+			// session lookup. Render is the manifest system's seam
+			// (design doc): a generated action calls ctx.Render, and
+			// blog.Render is the one function that now serves both
+			// the app's own hand pages and the generated ones (see
+			// its own doc comment and genrender.go).
 			mux := gen.Router(func(*http.Request) *rastrillo.Ctx {
-				return &rastrillo.Ctx{DB: db, Logger: logger, Actor: rastrillo.Actor{Human: true}}
+				return &rastrillo.Ctx{DB: db, Logger: logger, Actor: rastrillo.Actor{Human: true}, Render: blog.Render}
 			})
 
 			// The app serves its own static files — the framework

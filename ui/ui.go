@@ -12,9 +12,9 @@
 //	        ParseFS(ui.Templates(), "*.html"))
 //	tmpl = template.Must(tmpl.ParseFS(appTemplateFS, "templates/*.html"))
 //
-// The twelve partials are page-header, list-bar, list-bar-search,
+// The thirteen partials are page-header, list-bar, list-bar-search,
 // list-search-submit, list-row-action, status-pill, empty-state,
-// pagination, field-text, field-textarea, form-foot and dropdown. Each
+// pagination, field-text, field-textarea, form-foot, dropdown and detail-list. Each
 // takes exactly one data value; build it inline with dict (see Funcs).
 // Each partial's own file carries its data contract in a template
 // comment above the {{define}}.

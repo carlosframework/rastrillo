@@ -89,12 +89,19 @@ rather than to cover the full design. **Built:**
 - **`examples/helloworld`** — a real scaffolded app, checked in, proven
   to ship/promote/serve through the actual `carlos` binary — see
   [`hack/local-deploy-demo.sh`](hack/local-deploy-demo.sh).
+- **Manifests** (design doc §9) — declare a `rastrillo.Resource` and
+  `rastrillo generate` builds its store, its four screens' worth of
+  actions and templates, and their locale keys, with `sqlc` query
+  colocation for the store. See "Manifests" below.
+- **`examples/blog`** — a whole app built from stock parts: `ui`'s
+  partials, no JavaScript, and (new on this branch) a manifest-declared
+  resource adopted alongside hand-written actions and ejected
+  templates — see [`examples/blog/README.md`](examples/blog/README.md).
 
 **Not built yet** — all designed in the spec above, none of it faked or
-stubbed here: the manifest system (`Resource`/`List`/`Form`, TOML sugar,
-codegen-with-skip), `sqlc` query colocation, the `Mergeable` event-sourced
-store shape, blobs, the crypto core, WebAuthn, the agents system, the
-component/UI vocabulary, and the preloaded `CLAUDE.md`/skill
+stubbed here: the `Mergeable` event-sourced store shape, blobs, the
+crypto core, WebAuthn, the agents system, the component/UI vocabulary
+beyond `ui`'s current partial set, and the preloaded `CLAUDE.md`/skill
 scaffolding. Each is a real, separate piece of work — see the design doc
 for the shape of each.
 
@@ -111,6 +118,88 @@ beyond the package clause. A future version could instead lift just the
 `Handle` function via full AST extraction to get closer to "one file, no
 package boilerplate," but that's real complexity, deliberately deferred
 rather than rushed — see `internal/generate/generate.go`'s package doc.
+
+## Manifests
+
+Design doc §9's `Resource` sugar: declare a data entity once and
+`rastrillo generate` builds its store, its screens, and their locale
+keys — a CRUD interface for a fraction of the cost of writing each of
+those by hand. Drop this in `manifest/posts.toml`:
+
+```toml
+name  = "posts"
+route = "/admin/posts"
+store = "exclusive"
+
+[list]
+columns = [{ field = "Title" }]
+search  = true
+
+[form]
+basics = [{ name = "Title" }, { name = "Body", kind = "textarea" }]
+```
+
+(or build the same `rastrillo.Resource` value in `manifest/*.go` — a
+typed alternative for a shape TOML can't express, evaluated with `go
+run` against the app's own module, for when a resource's shape wants to
+be computed rather than declared literally) and `rastrillo generate`
+produces, per resource:
+
+- **A store** — `gen/store/<name>/`: `schema.sql`/`queries.sql` (sqlc's
+  own input, colocated per resource) plus `migrations.go` (the same
+  table as `CREATE TABLE IF NOT EXISTS`, for `Options.Migrations`).
+  Generation runs `go tool sqlc generate` against that input, so an
+  app adopting a manifest must add the tool directive once:
+  `go get -tool github.com/sqlc-dev/sqlc/cmd/sqlc`.
+- **Actions** for the four canonical states — list, show, new+create,
+  edit (basics, plus advanced when the manifest declares `[form]
+  advanced` fields) — written straight into `gen/actions/`, compiled
+  normally: unlike a hand action under `actions/`, a manifest's action
+  files never pass through the filesystem router's own
+  Discover/Rewrite step, so they carry no `//go:build` tag. Each hands
+  its page to the app's own template tree through `Ctx.Render` — the
+  one seam generated code needs, since it cannot call an app-private
+  helper like a hand-rolled `blog.Render`. Page names are always
+  `<resource>/list`, `<resource>/show` or `<resource>/form`, regardless
+  of which of the (up to) seven action files is rendering.
+- **Templates** — `gen/templates/<name>/{list,show,form}.html`,
+  composed entirely from the `ui` package's partials. `list.html` is
+  gated on `search` at generation time: a resource with `search =
+  false` gets no search box at all, and there is **no filter control in
+  v1** — a manifest's `filter` list validates (every entry must name a
+  declared column) but a dropdown needs enumerable values the manifest
+  doesn't declare, so nothing renders one yet.
+- **Locale keys** — `gen/locales/<default>.toml` (for humans/
+  translators) and `gen/locales/locales.go` (a generated `BaseCatalog`
+  var, wired as `Options.BaseCatalog`) carry a title-cased fallback
+  label for every field and screen a resource declares, from one source
+  map so the two files cannot drift — layered underneath whatever
+  catalog the app supplies.
+- **`gen/manifest.json`** — the whole resource set as one stable JSON
+  artifact (sorted by name, two-space indent, evolution additive-only),
+  for any future renderer or tool that wants a resource's shape without
+  parsing TOML or running Go.
+
+**Eject a template or action file, or skip generating one at all.** A
+hand-written file already sitting at the exact path generation would
+compute — `templates/<name>/list.html`, or `actions/<route
+path>/index.GET.go` — is left alone: the generator writes nothing
+there. That is the whole ejection story: copy a generated file's own
+content out to its hand path (each file's header names the exact path
+to copy to), and generation of that one file stops there; every other
+file for that resource keeps regenerating normally. A route claimed by
+two sources — hand and generated, or two resources whose computed
+paths collide — fails the build loudly, the same as a filesystem-router
+collision. `rastrillo generate --check` runs the whole pipeline into a
+scratch directory and diffs it against the committed `gen/`, catching
+both a stale/hand-edited generated file (idempotency) and a collision,
+without writing anything.
+
+v1 has no server-side required-field validation (an empty `Money`
+field parses to zero cents, never an error) and generates no delete
+action; `store = "mergeable"` isn't built yet either (`Validate`
+rejects it by name). `examples/blog` shows what an app adds by hand to
+cover what a manifest doesn't generate.
 
 ## Try it
 
