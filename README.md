@@ -53,6 +53,11 @@ rather than to cover the full design. **Built:**
   An app that keeps its database in `Ctx` sets `Options.Router` instead
   of `Options.Mux` and is handed the `*sql.DB` Serve opened;
   `rastrillo.OpenDB` is the same corrected opener exported for tests.
+  `Options.Wrap` is the app-middleware seam: it wraps the app's mux
+  (sessions, CSRF, panic pages, authorization) inside the framework's
+  chrome — `GET /healthz`, `GET /api/version`, and locale-prefix stripping
+  stay outside it, so probes never traverse app middleware and
+  middleware sees the same paths routes match on.
   Between `Serve` and `Run`, the activation contract is covered end to
   end: every route kind the platform runs — always-on instance,
   hibernating exec child, unit tenant — boots the same scaffolded app.
