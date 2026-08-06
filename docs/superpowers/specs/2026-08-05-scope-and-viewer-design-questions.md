@@ -65,6 +65,54 @@ role check could also read? And what is a request with no viewer: does
 a scoped resource show nothing, refuse the request, or is "no viewer"
 a legitimate state that some resources accept?
 
+## The prior question: is the database boundary the visibility boundary?
+
+The platform runs a SQLite database per app instance, and nothing
+stops a deployment from running an instance — and so a database — per
+tenant. If the tenant boundary *is* the visibility boundary, unscoped
+generated CRUD is safe by construction: `SELECT * FROM wishes` can
+only return rows the activating viewer was allowed to reach, because
+routing the request to that database already was the authorization
+check. In that world the three mechanics below are a niche feature,
+not a manifest prerequisite, and what remains of gleester's finding
+is (a) identity — you cannot route to "my" database without knowing
+who "me" is, so F7 is needed either way — and (b) whatever
+`Options.Wrap` must hold at the edge to decide which databases a
+session may activate.
+
+So the design cycle's first question may not be "how does a viewer
+thread through sqlc" but "what is a tenant, and when does the
+database boundary stop being the visibility boundary?" Candidate
+regimes, none endorsed:
+
+- **Tenant = one viewer** (a personal tool, a single-team admin
+  panel — examples/tickets is implicitly this). The DB boundary is
+  the scope; nothing below applies.
+- **Tenant = a group with internal roles** (a member sees their own
+  drafts, an admin sees all). Partitioning shrinks the blast radius
+  but reinstates in-database scoping for the within-tenant rules.
+- **Tenant = the shared thing itself** (a database per wish list,
+  activation gated by membership or share token). Row scoping
+  disappears, but gleester's column-level rule — the owner must not
+  see purchased flags on rows in their own list — is per-viewer
+  visibility *within* one tenant database, so some viewer-awareness
+  survives in actions and templates even under perfect partitioning.
+- **Data replicated per viewer's database.** Scoping trades for
+  sync/merge — which is what the design doc's deferred `Mergeable`
+  store shape looks like it exists for. A different problem, not a
+  smaller one.
+
+Questions this adds: does rastrillo take a stance ("apps are
+per-tenant by default; multiple viewers in one database is the
+exception you opt into"), and if so where is that stance visible — a
+manifest declaration, an Options field, documentation only? Is
+gleester's sharing graph naturally tenant-per-wishlist, or dense
+enough (friends-of-friends, aggregate views across lists) that
+partitioning by database was never viable? And what does the platform
+owe here — is "a database per tenant" a deployment shape the
+activator already supports, or new platform work this design would be
+gated on?
+
 ## Three candidate mechanics for threading scope through generated sqlc queries
 
 The constraint that makes this genuinely hard: generation emits
@@ -123,6 +171,10 @@ None of the three is endorsed here.
 6. What does `rastrillo generate --check` owe here — can it prove a
    declared-scoped resource generated no unscoped query?
 7. Does an unscoped resource stay legal, and how loud is that choice?
+8. Before any of 1–7: is the tenant/database boundary the visibility
+   boundary (see "The prior question" above)? If the answer is "often
+   yes", the cycle should decide which regime rastrillo speaks for
+   before designing query mechanics for the regimes it doesn't.
 
 ## Input we want from James
 
