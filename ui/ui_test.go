@@ -79,6 +79,7 @@ func TestBothThemesDeclareEveryColourToken(t *testing.T) {
 		"--rst-tone-positive-fg", "--rst-tone-positive-bg",
 		"--rst-tone-warning-fg", "--rst-tone-warning-bg",
 		"--rst-tone-negative-fg", "--rst-tone-negative-bg",
+		"--rst-shadow-pop",
 	}
 	for _, prop := range themed {
 		// Declarations are "<prop>: value"; uses are "var(<prop>)", so the
@@ -532,9 +533,33 @@ func TestListBarWrapsTheSearchFormInAToolbarStrip(t *testing.T) {
 			t.Errorf("missing %q: %s", want, got)
 		}
 	}
-	// This slice renders no filter or sort control (spec §3).
+	// Without a Filter, the bar renders no dropdown — the key, not the
+	// slice boundary, is now what gates it.
 	if strings.Contains(got, "<details") {
-		t.Errorf("list-bar rendered a dropdown, which is a later slice: %s", got)
+		t.Errorf("list-bar rendered a dropdown without a Filter: %s", got)
+	}
+}
+
+func TestListBarRendersAFilterDropdownWhenGivenOne(t *testing.T) {
+	got := render(t, "list-bar", map[string]any{
+		"SearchAction": "/admin/posts",
+		"Filter": map[string]any{
+			"Label": "All",
+			"Aria":  "Filter by status: All",
+			"Items": []any{
+				map[string]any{"Href": "/admin/posts", "Label": "All", "Current": true},
+				map[string]any{"Href": "/admin/posts?status=draft", "Label": "Drafts"},
+			},
+		},
+	})
+	for _, want := range []string{
+		`<details class="rst-dropdown">`,
+		`aria-label="Filter by status: All"`,
+		`<a href="/admin/posts?status=draft">Drafts</a>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
 	}
 }
 
@@ -794,8 +819,18 @@ func allPartials() []struct {
 			},
 		}},
 		{"field-textarea", map[string]any{
-			"ID": "bio", "Name": "bio", "Label": "Bio", "Rows": "4",
-			"Help": "Shown on your profile.",
+			"Name": "bio", "Label": "Bio", "Rows": 4,
+			"Hint": "Shown on your profile.",
+		}},
+		{"field-text", map[string]any{
+			"Name": "title", "Label": "Title", "Hint": "Shown in the list.",
+		}},
+		{"dropdown", map[string]any{
+			"Label": "Sort",
+			"Items": []any{map[string]any{"Href": "/x", "Label": "Newest"}},
+		}},
+		{"form-foot", map[string]any{
+			"Submit": "Save", "CancelHref": "/admin/posts", "CancelLabel": "Back to posts",
 		}},
 		{"field-check", map[string]any{
 			"Name": "notify", "Label": "Email me about replies", "Checked": true,
@@ -929,17 +964,17 @@ func TestAllPartialsAreDefined(t *testing.T) {
 	want := []string{
 		"page-header", "list-bar", "list-bar-search", "list-search-submit",
 		"list-row-action", "status-pill", "empty-state", "pagination",
-		"badge", "meter", "person", "callout", "detail-list",
-		"field", "field-select", "field-textarea", "field-check", "choice-field", "seg-tabs",
-		"confirm-form", "back-nav", "notice", "form-error", "bulk-bar",
+		"badge", "meter", "person", "callout", "detail-list", "dropdown",
+		"field", "field-select", "field-text", "field-textarea", "field-check", "choice-field", "seg-tabs",
+		"confirm-form", "back-nav", "notice", "form-error", "form-foot", "bulk-bar",
 	}
 	for _, name := range want {
 		if tmpl.Lookup(name) == nil {
 			t.Errorf("partial %q is not defined", name)
 		}
 	}
-	if len(want) != 24 {
-		t.Fatalf("the shipped set is 24 partials, this list has %d", len(want))
+	if len(want) != 27 {
+		t.Fatalf("the shipped set is 27 partials, this list has %d", len(want))
 	}
 }
 
@@ -1050,6 +1085,28 @@ func countOpenTags(s, tag string) int {
 	return strings.Count(s, "<"+tag+" ") + strings.Count(s, "<"+tag+">")
 }
 
+func TestListRowActionRendersAStatusPill(t *testing.T) {
+	got := render(t, "list-row-action", map[string]any{
+		"Href": "/admin/posts/1/edit", "Main": "Release notes",
+		"StatusTone": "positive", "StatusLabel": "Published",
+		"ActionHref": "/posts/1", "ActionLabel": "View",
+	})
+	if !strings.Contains(got, `<span class="rst-status" data-tone="positive">Published</span>`) {
+		t.Errorf("status pill missing or wrong: %s", got)
+	}
+	// The pill sits in the right-hand group, before the action pill.
+	if strings.Index(got, `class="rst-status"`) > strings.Index(got, `class="rst-row__action"`) {
+		t.Errorf("status pill rendered after the action pill: %s", got)
+	}
+}
+
+func TestListRowActionStatusPillAbsentByDefault(t *testing.T) {
+	got := render(t, "list-row-action", map[string]any{"Href": "/p", "Main": "M"})
+	if strings.Contains(got, "rst-status") {
+		t.Errorf("status pill rendered without StatusLabel: %s", got)
+	}
+}
+
 // F10 regression (examples/blog friction log): the class the partial
 // emits for a disabled chip and the selector tokens.css styles must be
 // the same string — they drifted apart once, leaving a disabled
@@ -1077,7 +1134,7 @@ func TestDisplayPartialClassesAreStyled(t *testing.T) {
 	for _, class := range []string{
 		"rst-badge", "rst-badge--warning", "rst-meter", "rst-meter__bar", "rst-meter__num",
 		"rst-person", "rst-person__av", "rst-callout", "rst-callout__ic", "rst-callout__body",
-		"rst-detail-list",
+		"rst-detail", "rst-mono",
 	} {
 		if !strings.Contains(css, "."+class) {
 			t.Errorf("tokens.css has no selector for %q", class)
@@ -1511,5 +1568,174 @@ func TestDropdownExclusivityIsNative(t *testing.T) {
 	}
 	if strings.Contains(sample, "<script") {
 		t.Errorf("dropdown sample reaches for <script>; exclusivity must stay native: %s", sample)
+	}
+}
+
+func TestDropdownRendersADetailsMenuOfLinks(t *testing.T) {
+	got := render(t, "dropdown", map[string]any{
+		"Label": "All",
+		"Aria":  "Filter by status: All",
+		"Items": []any{
+			map[string]any{"Href": "/admin/posts", "Label": "All", "Current": true},
+			map[string]any{"Href": "/admin/posts?status=draft", "Label": "Drafts"},
+		},
+	})
+	for _, want := range []string{
+		`<details class="rst-dropdown">`,
+		`<summary class="rst-btn rst-dropdown__summary" aria-label="Filter by status: All">All`,
+		`<a href="/admin/posts" aria-current="true">All`,
+		`<a href="/admin/posts?status=draft">Drafts</a>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+	// The current item is marked twice — attribute and check icon; the
+	// non-current one carries neither.
+	if !strings.Contains(got, `path d="M20 6 9 17l-5-5"`) {
+		t.Errorf("current item lost its check icon: %s", got)
+	}
+	if strings.Count(got, "aria-current") != 1 {
+		t.Errorf("aria-current should mark exactly the current item: %s", got)
+	}
+}
+
+func TestDropdownMinimalFixture(t *testing.T) {
+	got := render(t, "dropdown", map[string]any{
+		"Label": "Sort",
+		"Items": []any{map[string]any{"Href": "/x", "Label": "Newest"}},
+	})
+	if strings.Contains(got, "aria-label") {
+		t.Errorf("Aria was absent but an aria-label rendered: %s", got)
+	}
+	if !strings.Contains(got, `path d="m6 9 6 6 6-6"`) {
+		t.Errorf("summary lost its disclosure chevron: %s", got)
+	}
+}
+
+func TestFieldTextMaximalFixture(t *testing.T) {
+	got := render(t, "field-text", map[string]any{
+		"Name": "title", "Label": "Title", "Value": "Hello", "Type": "text",
+		"Required": true, "Hint": "Shown in the list.", "Error": "Title is required.",
+		"Autocomplete": "off",
+	})
+	for _, want := range []string{
+		`<div class="rst-field">`,
+		`<label class="rst-field__label" for="title">Title`,
+		`<span class="rst-field__required" aria-hidden="true">*</span>`,
+		`<input class="rst-input" id="title" name="title" type="text" value="Hello" autocomplete="off" required aria-invalid="true" aria-describedby="title-hint title-error">`,
+		`<small class="rst-field__hint" id="title-hint">Shown in the list.</small>`,
+		`<small class="rst-field__error" id="title-error">Title is required.</small>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+func TestFieldTextMinimalFixture(t *testing.T) {
+	got := render(t, "field-text", map[string]any{"Name": "q", "Label": "Query"})
+	if !strings.Contains(got, `<input class="rst-input" id="q" name="q" type="text">`) {
+		t.Errorf("minimal input wrong: %s", got)
+	}
+	for _, absent := range []string{"aria-describedby", "aria-invalid", "required", "value=", "rst-field__hint", "rst-field__error"} {
+		if strings.Contains(got, absent) {
+			t.Errorf("%q rendered without its key: %s", absent, got)
+		}
+	}
+}
+
+// aria-describedby lists only ids that exist: hint alone, error alone.
+func TestFieldTextDescribedByMatchesRenderedIds(t *testing.T) {
+	hintOnly := render(t, "field-text", map[string]any{"Name": "a", "Label": "A", "Hint": "h"})
+	if !strings.Contains(hintOnly, `aria-describedby="a-hint"`) {
+		t.Errorf("hint-only describedby wrong: %s", hintOnly)
+	}
+	errOnly := render(t, "field-text", map[string]any{"Name": "a", "Label": "A", "Error": "e"})
+	if !strings.Contains(errOnly, `aria-describedby="a-error"`) {
+		t.Errorf("error-only describedby wrong: %s", errOnly)
+	}
+}
+
+func TestFieldTextareaMaximalFixture(t *testing.T) {
+	got := render(t, "field-textarea", map[string]any{
+		"Name": "body", "Label": "Body", "Value": "Hello\n\nWorld",
+		"Rows": 18, "Required": true, "Hint": "Plain text.", "Error": "Too long.",
+	})
+	for _, want := range []string{
+		`<label class="rst-field__label" for="body">Body`,
+		`<textarea class="rst-textarea" id="body" name="body" rows="18" required aria-invalid="true" aria-describedby="body-hint body-error">Hello`,
+		`<small class="rst-field__hint" id="body-hint">Plain text.</small>`,
+		`<small class="rst-field__error" id="body-error">Too long.</small>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+func TestFieldTextareaMinimalFixture(t *testing.T) {
+	got := render(t, "field-textarea", map[string]any{"Name": "notes", "Label": "Notes"})
+	if !strings.Contains(got, `<textarea class="rst-textarea" id="notes" name="notes"></textarea>`) {
+		t.Errorf("minimal textarea wrong: %s", got)
+	}
+	if strings.Contains(got, "rows=") {
+		t.Errorf("rows rendered without the key: %s", got)
+	}
+}
+
+func TestFormFootRendersSubmitAndCancel(t *testing.T) {
+	got := render(t, "form-foot", map[string]any{
+		"Submit": "Save", "CancelHref": "/admin/posts", "CancelLabel": "Back to posts",
+	})
+	for _, want := range []string{
+		`<div class="rst-form__foot">`,
+		`<button class="rst-btn rst-btn--primary" type="submit">Save</button>`,
+		`<a class="rst-btn" href="/admin/posts">Back to posts</a>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+func TestFormFootMinimalFixture(t *testing.T) {
+	got := render(t, "form-foot", map[string]any{"Submit": "Create"})
+	if strings.Contains(got, "<a ") {
+		t.Errorf("cancel link rendered without CancelHref: %s", got)
+	}
+}
+
+// F2's second half: the focus ring covers the whole app column, so a
+// hand-rolled control inside .rst-page no longer restates the outline.
+func TestFocusRingScopeIncludesThePageColumn(t *testing.T) {
+	css := string(TokensCSS())
+	if !strings.Contains(css, ":where(.rst-page,") {
+		t.Error("tokens.css :focus-visible scope does not start with .rst-page")
+	}
+}
+
+func TestDetailListRendersLabelValueRows(t *testing.T) {
+	got := render(t, "detail-list", map[string]any{
+		"Items": []any{
+			map[string]any{"Label": "Title", "Value": "Hello"},
+			map[string]any{"Label": "Price", "Value": "$1.00", "Mono": true},
+		},
+	})
+	for _, want := range []string{
+		`<dl class="rst-detail">`,
+		`<dt>Title</dt>`, `<dd>Hello</dd>`,
+		`<dt>Price</dt>`, `<dd class="rst-mono">$1.00</dd>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q: %s", want, got)
+		}
+	}
+}
+
+func TestDetailListEmptyItemsRendersEmptyList(t *testing.T) {
+	got := render(t, "detail-list", map[string]any{"Items": []any{}})
+	if !strings.Contains(got, `<dl class="rst-detail">`) || strings.Contains(got, "<dt>") {
+		t.Errorf("empty detail-list wrong: %s", got)
 	}
 }

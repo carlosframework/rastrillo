@@ -255,9 +255,10 @@ body {
   inline-size: 1em;
 }
 
-/* Focus is visible everywhere inside a rastrillo component. :where()
-   contributes no specificity, so any rule below can override it. */
-:where(.rst-page-header, .rst-list, .rst-lbar, .rst-search, .rst-empty, .rst-pagination) :focus-visible {
+/* Focus is visible everywhere inside the app column (.rst-page) and
+   inside any component rendered outside one. :where() contributes no
+   specificity, so any rule below can override it. */
+:where(.rst-page, .rst-page-header, .rst-list, .rst-lbar, .rst-search, .rst-empty, .rst-pagination) :focus-visible {
   outline: 2px solid var(--rst-accent);
   outline-offset: 2px;
 }
@@ -571,6 +572,14 @@ body {
   color: var(--rst-accent);
 }
 
+/* A status pill inside a row sits above the name link's overlay, like
+   the action pill does. */
+.rst-row .rst-status {
+  flex: none;
+  position: relative;
+  z-index: 1;
+}
+
 /* ── status-pill. The dot is decoration; the label is the state. ──── */
 .rst-status {
   align-items: center;
@@ -725,11 +734,12 @@ body {
 .rst-callout[data-tone="negative"] { background: var(--rst-tone-negative-bg); border-color: var(--rst-tone-negative-fg); }
 .rst-callout[data-tone="negative"] > .rst-callout__ic { color: var(--rst-tone-negative-fg); }
 
-/* detail-list — hairline label/value rows; bare inside a box, framed alone. */
-.rst-detail-list { display: grid; grid-template-columns: max-content 1fr; margin: var(--rst-sp-4) 0; }
-.rst-detail-list dt { border-top: 1px solid var(--rst-line); color: var(--rst-text-muted); padding: 0.6rem 0; }
-.rst-detail-list dd { border-top: 1px solid var(--rst-line); font-weight: 500; margin: 0; padding: 0.6rem 0 0.6rem 1.5rem; text-align: right; }
-.rst-detail-list dt:first-of-type, .rst-detail-list dd:first-of-type { border-top: 0; }
+/* detail-list — a record's labelled facts as a definition list; the
+   partial emits .rst-detail, .rst-mono marking machine-ish values. */
+.rst-detail { display: grid; gap: var(--rst-sp-2) var(--rst-sp-5); grid-template-columns: max-content 1fr; margin: var(--rst-sp-4) 0; }
+.rst-detail dt { color: var(--rst-text-muted); font-size: var(--rst-fs-sm); font-weight: 600; }
+.rst-detail dd { margin: 0; }
+.rst-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: var(--rst-fs-sm); }
 
 /* ── Narrow screens ───────────────────────────────────────────────── */
 @media (max-width: 34rem) {
@@ -759,7 +769,7 @@ body {
 .rst-box-head + .rst-box { margin-top: 0; }
 .rst-box-head h2 { font-size: var(--rst-fs-base); margin: 0; }
 .rst-box-foot { border-top: 1px solid var(--rst-line); color: var(--rst-text-muted); margin-top: var(--rst-sp-4); padding-top: 0.75rem; }
-.rst-box > .rst-detail-list { margin: 0; }
+.rst-box > .rst-detail { margin: 0; }
 
 /* The list grid — the real data-table vocabulary. The card sets the
    columns once (--rst-cols, inline, trailing 32px for the kebab);
@@ -845,6 +855,12 @@ details[open] > summary > .rst-caret { transform: rotate(180deg); }
 .rst-input:focus-visible { outline: 2px solid var(--rst-accent); outline-offset: 2px; }
 .rst-input--short { width: 6.5rem; }
 textarea.rst-input { min-height: 5rem; resize: vertical; }
+/* field-text/field-textarea (the interim pair the manifest generator
+   emits) mark a required label with * and put the textarea on its own
+   class; styled here so both field families render finished. */
+.rst-field__required { color: var(--rst-tone-negative-fg); }
+.rst-textarea { background: var(--rst-surface); border: 1px solid var(--rst-line-strong); border-radius: var(--rst-radius-sm); color: inherit; font: inherit; line-height: 1.6; min-height: 5rem; padding: 0.45rem 0.6rem; resize: vertical; width: 100%; }
+.rst-textarea:focus-visible { outline: 2px solid var(--rst-accent); outline-offset: 2px; }
 .rst-field__help { color: var(--rst-text-muted); font-size: var(--rst-fs-xs); margin: 0.45rem 0 0; }
 .rst-field__error { color: var(--rst-tone-negative-fg); font-size: var(--rst-fs-xs); margin: 0.45rem 0 0; }
 
@@ -884,6 +900,10 @@ textarea.rst-input { min-height: 5rem; resize: vertical; }
 .rst-form-foot { align-items: center; background: var(--rst-bg); border-top: 1px solid var(--rst-line); bottom: 0; display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 1.75rem; padding: 0.8rem 0; position: sticky; z-index: 5; }
 .rst-form-foot .rst-form-foot__note { color: var(--rst-text-muted); font-size: var(--rst-fs-xs); margin-right: auto; }
 .rst-form-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+/* form/form-foot — the container the form-foot partial's callers wrap
+   fields in, and the closing action row form-foot itself emits. */
+.rst-form { display: flex; flex-direction: column; gap: var(--rst-sp-2); max-inline-size: 44rem; }
+.rst-form__foot { display: flex; gap: var(--rst-sp-3); margin-block-start: var(--rst-sp-3); }
 
 @media (prefers-reduced-motion: reduce) {
   .rst-switch__track, .rst-switch__track::after { transition: none; }

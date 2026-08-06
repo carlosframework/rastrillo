@@ -61,6 +61,16 @@ type Options struct {
 	// that needs a handle outside Serve's lifetime calls OpenDB itself.
 	Router func(db *sql.DB) (*http.ServeMux, error)
 
+	// Wrap, if set, wraps the app's mux — the one seam for app
+	// middleware: sessions, CSRF, panic pages, authorization
+	// (gleester's friction, James 2026-08-04). It runs inside the
+	// framework's chrome: GET /healthz and GET /api/version are
+	// answered outside it (platform probes never traverse app
+	// middleware), and locale-prefix stripping happens before it,
+	// so middleware sees the same paths routes match on. Nil means
+	// no wrapping. Returning nil is a boot error.
+	Wrap func(http.Handler) http.Handler
+
 	// DBPath, if set, opens a SQLite database with the pragma ordering
 	// and connection settings the survey found hand-propagated,
 	// error-prone, repo to repo (design doc §5): busy_timeout set
@@ -98,6 +108,17 @@ type Options struct {
 	// catalog visible instead of silently blank (§10).
 	LocaleFS fs.FS
 
+	// BaseCatalog optionally supplies a base catalog that sits UNDER
+	// every app catalog (Locales' own doc comment: requested locale's
+	// app catalog, then the default locale's app catalog, then this) —
+	// normally the generated gen/locales/locales.go var BaseCatalog a
+	// manifest resource's field labels and shared ui.* chrome strings
+	// compile to (design doc §9's manifest system; internal/generate's
+	// EmitLocales emits it from the same map as the human-readable
+	// gen/locales/en.toml, so the two cannot drift). Nil is legal — an
+	// app with no manifest resources has nothing to layer.
+	BaseCatalog Catalog
+
 	// Logger defaults to slog.Default() if nil.
 	Logger *slog.Logger
 }
@@ -132,9 +153,8 @@ func Serve(opts Options) error {
 
 	handler, err := buildHandler(opts)
 	if err != nil {
-		// buildHandler's only error source is NewLocales, whose errors
-		// already carry the "rastrillo:" prefix — wrapping again here
-		// would read "rastrillo: rastrillo: ...".
+		// buildHandler's error sources (NewLocales, the Wrap nil-handler
+		// check) already carry the rastrillo: prefix, so no re-wrap here.
 		return err
 	}
 
@@ -167,11 +187,11 @@ func Serve(opts Options) error {
 }
 
 // buildHandler assembles the serving handler: the framework's own
-// endpoints, the app mux, and — when Options.Locales is set — the
-// locale middleware wrapped around the whole thing, so a locale
-// prefix strips before routing and the translator rides the request
-// context (§10). Split from Serve so the assembly is testable
-// without sockets.
+// endpoints, the app mux (wrapped by Options.Wrap when set), and
+// — when Options.Locales is set — the locale middleware wrapped around
+// the whole thing, so a locale prefix strips before routing and the
+// translator rides the request context (§10). Split from Serve so the
+// assembly is testable without sockets.
 func buildHandler(opts Options) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -180,7 +200,13 @@ func buildHandler(opts Options) (http.Handler, error) {
 	mux.HandleFunc("GET /api/version", func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, BuildVersion)
 	})
-	mux.Handle("/", opts.Mux)
+	app := http.Handler(opts.Mux)
+	if opts.Wrap != nil {
+		if app = opts.Wrap(opts.Mux); app == nil {
+			return nil, errors.New("rastrillo: Options.Wrap returned a nil handler")
+		}
+	}
+	mux.Handle("/", app)
 
 	if len(opts.Locales) == 0 {
 		return mux, nil
@@ -192,8 +218,16 @@ func buildHandler(opts Options) (http.Handler, error) {
 	// The framework base catalog (rastrillo.ui.* keys) is the third
 	// fallback layer §10 reserved — passing it here, rather than nil, is
 	// what lets ui's partials resolve correctly-worded English defaults
-	// through T for an app that ships no catalog of its own at all.
-	loc, err := NewLocales(opts.Locales, def, BaseCatalog(), opts.LocaleFS)
+	// through T for an app that ships no catalog of its own at all. An
+	// app's own Options.BaseCatalog (normally the manifest-generated
+	// gen/locales var) shares that layer: it overlays the framework's
+	// keys, app winning on any shared key, still under every per-locale
+	// app catalog.
+	base := BaseCatalog()
+	for k, v := range opts.BaseCatalog {
+		base[k] = v
+	}
+	loc, err := NewLocales(opts.Locales, def, base, opts.LocaleFS)
 	if err != nil {
 		return nil, err
 	}

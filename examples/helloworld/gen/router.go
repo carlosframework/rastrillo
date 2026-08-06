@@ -13,7 +13,7 @@ import (
 // *rastrillo.Ctx per request; see cmd/<app>/main.go.
 func Router(ctxFactory func(*http.Request) *rastrillo.Ctx) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		act_index_get.Handle(ctxFactory(r), w, r)
 	})
 	return mux

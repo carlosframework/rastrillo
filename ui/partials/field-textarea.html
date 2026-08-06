@@ -1,19 +1,23 @@
-{{/* field-textarea — field's envelope around a plain scrolling
-     <textarea>. No autosize: growing a textarea with input costs
-     JavaScript, and this package's zero-JS baseline says a fixed Rows
-     and a scrollbar beat a script tag.
+{{/* field-textarea — field-text's wrapper around a <textarea>. The
+     wrapper is repeated, not composed — see field-text's comment.
+
      Keys:
-       ID, Name, Label  strings, required
-       Value, Placeholder  strings, optional
-       Rows      string, optional — default "3"
-       Maxlength string, optional
-       Required  bool, optional
-       Autofocus bool, optional — a dedicated create page's first field only
-       Hint      string, optional — quiet parenthetical after the label
-       Help      string, optional — the line under the control
-       Error     string, optional — validation message */}}
-{{define "field-textarea"}}<div class="rst-field"><label class="rst-field__label" for="{{.ID}}">{{.Label}}{{with .Hint}} <span class="rst-field__hint">({{.}})</span>{{end}}</label>
-<textarea class="rst-input" id="{{.ID}}" name="{{.Name}}" rows="{{or .Rows "3"}}"{{with .Placeholder}} placeholder="{{.}}"{{end}}{{if .Required}} required{{end}}{{if .Autofocus}} autofocus{{end}}{{with .Maxlength}} maxlength="{{.}}"{{end}}{{if .Error}} aria-invalid="true" aria-describedby="{{.ID}}-error"{{else if .Help}} aria-describedby="{{.ID}}-help"{{end}}>{{or .Value ""}}</textarea>
-{{if .Error}}<p class="rst-field__error" id="{{.ID}}-error" role="alert">{{.Error}}</p>
-{{else if .Help}}<p class="rst-field__help" id="{{.ID}}-help">{{.Help}}</p>
-{{end}}</div>{{end}}
+       Name      string, required — name, id, and hint/error id prefix
+       Label     string, required — the visible label
+       Value     string, optional — the current content
+       Rows      int, optional — the rows attribute; omitted when unset
+                 so the browser default applies
+       Required  bool, optional — required attribute + visible *
+       Hint      string, optional — muted guidance under the control
+       Error     string, optional — validation message; also sets
+                 aria-invalid */}}
+{{define "field-textarea"}}<div class="rst-field">
+  <label class="rst-field__label" for="{{.Name}}">{{.Label}}{{if .Required}} <span class="rst-field__required" aria-hidden="true">*</span>{{end}}</label>
+  <textarea class="rst-textarea" id="{{.Name}}" name="{{.Name}}"{{if .Rows}} rows="{{.Rows}}"{{end}}{{if .Required}} required{{end}}{{if .Error}} aria-invalid="true"{{end}}{{if or .Hint .Error}} aria-describedby="{{if .Hint}}{{.Name}}-hint{{end}}{{if and .Hint .Error}} {{end}}{{if .Error}}{{.Name}}-error{{end}}"{{end}}>{{if .Value}}{{.Value}}{{end}}</textarea>
+  {{- if .Hint}}
+  <small class="rst-field__hint" id="{{.Name}}-hint">{{.Hint}}</small>
+  {{- end}}
+  {{- if .Error}}
+  <small class="rst-field__error" id="{{.Name}}-error">{{.Error}}</small>
+  {{- end}}
+</div>{{end}}
