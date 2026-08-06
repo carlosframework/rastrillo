@@ -215,7 +215,19 @@ func buildHandler(opts Options) (http.Handler, error) {
 	if def == "" {
 		def = opts.Locales[0]
 	}
-	loc, err := NewLocales(opts.Locales, def, opts.BaseCatalog, opts.LocaleFS)
+	// The framework base catalog (rastrillo.ui.* keys) is the third
+	// fallback layer §10 reserved — passing it here, rather than nil, is
+	// what lets ui's partials resolve correctly-worded English defaults
+	// through T for an app that ships no catalog of its own at all. An
+	// app's own Options.BaseCatalog (normally the manifest-generated
+	// gen/locales var) shares that layer: it overlays the framework's
+	// keys, app winning on any shared key, still under every per-locale
+	// app catalog.
+	base := BaseCatalog()
+	for k, v := range opts.BaseCatalog {
+		base[k] = v
+	}
+	loc, err := NewLocales(opts.Locales, def, base, opts.LocaleFS)
 	if err != nil {
 		return nil, err
 	}
