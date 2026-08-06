@@ -27,6 +27,33 @@ func TestNewScaffoldsTokensCSS(t *testing.T) {
 	}
 }
 
+// The scaffolded go.mod must pin the version of the rastrillo module
+// that actually built this CLI, not a hardcoded constant that goes
+// stale every release: a hardcoded v0.1.0 predates rastrillo.Run
+// entirely, so every fresh scaffold failed `go build` with "undefined:
+// rastrillo.Run" against a v0.5.0-or-later CLI.
+func TestNewPinsCLIsOwnRastrilloVersion(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := runNew([]string{"blogapp"}); err != nil {
+		t.Fatalf("runNew: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join("blogapp", "go.mod"))
+	if err != nil {
+		t.Fatalf("expected a scaffolded go.mod: %v", err)
+	}
+	if strings.Contains(string(got), "v0.1.0") {
+		t.Errorf("go.mod still pins the stale hardcoded v0.1.0:\n%s", got)
+	}
+	// go test binaries report "(devel)" from runtime/debug.ReadBuildInfo
+	// (a local checkout, not a `go install ...@vX.Y.Z`), so
+	// rastrilloVersion falls back to rastrilloFallbackVersion here —
+	// see version_test.go for the fallback logic itself.
+	want := "require github.com/carlosframework/rastrillo " + rastrilloFallbackVersion
+	if !strings.Contains(string(got), want) {
+		t.Errorf("go.mod does not pin the fallback rastrillo version:\ngot:\n%s\nwant substring %q", got, want)
+	}
+}
+
 // The scaffolded app still builds the same way it did before: go.mod,
 // the starter action, main.go, and a generated router.
 func TestNewStillScaffoldsTheRestOfTheApp(t *testing.T) {

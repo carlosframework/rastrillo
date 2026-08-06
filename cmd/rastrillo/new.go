@@ -42,7 +42,7 @@ func runNew(args []string) error {
 	}
 
 	files := map[string]string{
-		filepath.Join(name, "go.mod"):                  fmt.Sprintf(goModTemplate, name),
+		filepath.Join(name, "go.mod"):                  fmt.Sprintf(goModTemplate, name, rastrilloVersion()),
 		filepath.Join(name, "actions", "index.GET.go"): actionTemplate,
 		filepath.Join(name, "cmd", name, "main.go"):    fmt.Sprintf(mainTemplate, name),
 		filepath.Join(name, "assets.go"):               fmt.Sprintf(assetsTemplate, packageName(name)),
@@ -102,7 +102,7 @@ const goModTemplate = `module %s
 
 go 1.22
 
-require github.com/carlosframework/rastrillo v0.1.0
+require github.com/carlosframework/rastrillo %s
 `
 
 const actionTemplate = `// actions/ is generator input, never compiled in place: rastrillo
